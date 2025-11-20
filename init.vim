@@ -1,7 +1,7 @@
 set path+=**
 set modelines=0
 set autoread
-au FocusGained,BufEnter * :silent! !
+autocmd FocusGained,BufEnter * silent! checktime
 set encoding=utf-8
 set visualbell
 set backspace=indent,eol,start
@@ -42,6 +42,7 @@ call plug#begin('~/.local/share/nvim/plugged')
 " Install with `:PlugInstall`
 
 Plug 'neoclide/coc.nvim', {'branch': 'release'}
+let g:coc_global_extensions = ['coc-pyright', 'coc-tsserver', 'coc-go']
 
 Plug 'rust-lang/rust.vim'
 
@@ -97,10 +98,13 @@ let g:blamer_enabled = 1
 " %a is the day of week, in case it's needed
 let g:blamer_date_format = '%e %b %Y'
 highlight Blamer guifg=darkorange
-nnoremap C-d C-dzz
-nnoremap C-u C-uzz
+nnoremap <C-d> <C-d>zz
+nnoremap <C-u> <C-u>zz
 set ruler
 highlight LineNr term=NONE cterm=NONE ctermfg=DarkGrey ctermbg=NONE gui=NONE guifg=DarkGrey guibg=NONE
 set incsearch
 set nolist
+
+inoremap <silent><expr> <Tab> pumvisible() ? coc#_select_confirm() : "\<Tab>"
+inoremap <silent><expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
 
