@@ -42,7 +42,7 @@ call plug#begin('~/.local/share/nvim/plugged')
 " Install with `:PlugInstall`
 
 Plug 'neoclide/coc.nvim', {'branch': 'release'}
-let g:coc_global_extensions = ['coc-pyright', 'coc-tsserver', 'coc-go']
+let g:coc_global_extensions = ['coc-pyright', 'coc-tsserver', 'coc-go', 'coc-sql', 'coc-json']
 
 Plug 'rust-lang/rust.vim'
 
