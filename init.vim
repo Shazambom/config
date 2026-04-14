@@ -17,7 +17,7 @@ set showmode showcmd
 set ttyfast lazyredraw
 set showmatch
 set hlsearch incsearch ignorecase smartcase
-set autochdir
+" set autochdir  " disabled — breaks neo-tree
 set hidden
 set wildmenu wildmode=list:longest,full
 set laststatus=2 statusline=%F
@@ -26,8 +26,6 @@ set foldmethod=indent
 set foldnestmax=1
 set foldlevelstart=1
 filetype plugin indent on
-
-let g:netrw_browse_split = 3
 
 " Plugins, syntax, and colors
 " ---------------------------------------------------------------------------
@@ -57,8 +55,11 @@ Plug 'tpope/vim-commentary'
 " https://github.com/tpope/vim-surround
 Plug 'tpope/vim-surround'
 
-" https://github.com/tpope/vim-vinegar
-Plug 'tpope/vim-vinegar'
+" https://github.com/nvim-neo-tree/neo-tree.nvim
+Plug 'nvim-lua/plenary.nvim'
+Plug 'MunifTanjim/nui.nvim'
+Plug 'nvim-tree/nvim-web-devicons'
+Plug 'nvim-neo-tree/neo-tree.nvim', { 'branch': 'v3.x' }
 
 " https://github.com/APZelos/blamer.nvim
 Plug 'APZelos/blamer.nvim'
@@ -73,6 +74,36 @@ Plug 'catppuccin/nvim', { 'as': 'catppuccin' }
 
 " Initialize plugin system
 call plug#end()
+
+" Neo-tree setup
+lua << EOF
+local ok, neotree = pcall(require, "neo-tree")
+if ok then
+  neotree.setup({
+    filesystem = {
+      follow_current_file = { enabled = true },
+      use_libuv_file_watcher = true,
+      filtered_items = {
+        hide_dotfiles = false,
+        hide_gitignored = false,
+      },
+    },
+    window = {
+      position = "left",
+      width = 35,
+    },
+  })
+  vim.api.nvim_create_autocmd("VimEnter", {
+    callback = function()
+      vim.cmd("Neotree show")
+    end,
+  })
+end
+EOF
+
+nnoremap <leader>e :Neotree toggle<CR>
+nnoremap <C-e> <C-w>w
+inoremap <C-e> <Esc><C-w>w
 
 syntax enable
 " Neovim only
