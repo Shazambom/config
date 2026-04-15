@@ -9,6 +9,6 @@ sh -c 'curl -fLo "${XDG_DATA_HOME:-$HOME/.local/share}"/nvim/site/autoload/plug.
 
 mkdir -p "$HOME/.local/share/nvim/plugged"
 
-nvim --headless +PlugInstall +PlugClean! +qall
+nvim --headless +"PlugInstall --sync" +PlugClean! +qall
 
 echo "nvim install complete"

@@ -46,6 +46,8 @@ Plug 'rust-lang/rust.vim'
 
 Plug 'folke/tokyonight.nvim', { 'branch': 'main' }
 
+Plug 'doums/darcula'
+
 " https://github.com/itchyny/lightline.vim
 Plug 'itchyny/lightline.vim'
 
@@ -118,7 +120,8 @@ syntax enable
 set termguicolors 
 
 " colorscheme tokyonight-day
-colorscheme tokyonight-moon
+" colorscheme tokyonight-moon
+colorscheme darcula
 " Show character column
 set colorcolumn=80
 
