@@ -61,6 +61,9 @@ Plug 'MunifTanjim/nui.nvim'
 Plug 'nvim-tree/nvim-web-devicons'
 Plug 'nvim-neo-tree/neo-tree.nvim', { 'branch': 'v3.x' }
 
+" https://github.com/lewis6991/gitsigns.nvim
+Plug 'lewis6991/gitsigns.nvim'
+
 " https://github.com/APZelos/blamer.nvim
 Plug 'APZelos/blamer.nvim'
 
@@ -95,15 +98,20 @@ if ok then
   })
   vim.api.nvim_create_autocmd("VimEnter", {
     callback = function()
-      vim.cmd("Neotree show")
+      vim.cmd("Neotree focus")
     end,
   })
+end
+
+local ok2, gitsigns = pcall(require, "gitsigns")
+if ok2 then
+  gitsigns.setup()
 end
 EOF
 
 nnoremap <leader>e :Neotree toggle<CR>
-nnoremap <C-e> <C-w>w
-inoremap <C-e> <Esc><C-w>w
+nnoremap <silent> <C-e> :lua if vim.bo.filetype == 'neo-tree' then vim.cmd('wincmd p') else vim.cmd('Neotree focus') end<CR>
+inoremap <silent> <C-e> <Esc>:lua if vim.bo.filetype == 'neo-tree' then vim.cmd('wincmd p') else vim.cmd('Neotree focus') end<CR>
 
 syntax enable
 " Neovim only
@@ -138,4 +146,12 @@ set nolist
 
 inoremap <silent><expr> <Tab> pumvisible() ? coc#_select_confirm() : "\<Tab>"
 inoremap <silent><expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
+
+nmap <silent> gd <Plug>(coc-definition)
+nmap <silent> gr <Plug>(coc-references)
+nmap <silent> gi <Plug>(coc-implementation)
+nmap <silent> gy <Plug>(coc-type-definition)
+
+nnoremap <silent> K :call CocActionAsync('doHover')<CR>
+nnoremap <silent> <C-q> :silent CocRestart<CR>
 
