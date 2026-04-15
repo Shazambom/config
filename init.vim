@@ -88,6 +88,7 @@ if ok then
     filesystem = {
       follow_current_file = { enabled = true },
       use_libuv_file_watcher = true,
+      fuzzy_finder_mode = "filter_on_submit",
       filtered_items = {
         hide_dotfiles = false,
         hide_gitignored = false,
