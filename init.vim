@@ -42,7 +42,6 @@ call plug#begin('~/.local/share/nvim/plugged')
 Plug 'neoclide/coc.nvim', {'branch': 'release'}
 let g:coc_global_extensions = ['coc-pyright', 'coc-tsserver', 'coc-go', 'coc-sql', 'coc-json']
 
-Plug 'rust-lang/rust.vim'
 
 Plug 'folke/tokyonight.nvim', { 'branch': 'main' }
 
@@ -77,6 +76,9 @@ Plug 'macguirerintoul/night_owl_light.vim'
 
 Plug 'catppuccin/nvim', { 'as': 'catppuccin' }
 
+" https://github.com/nvim-treesitter/nvim-treesitter
+Plug 'nvim-treesitter/nvim-treesitter', {'do': ':TSUpdate'}
+
 " Initialize plugin system
 call plug#end()
 
@@ -88,15 +90,24 @@ if ok then
     filesystem = {
       follow_current_file = { enabled = true },
       use_libuv_file_watcher = true,
-      fuzzy_finder_mode = "filter_on_submit",
       filtered_items = {
         hide_dotfiles = false,
         hide_gitignored = false,
       },
     },
+    event_handlers = {{
+      event = "file_opened",
+      handler = function()
+        require("neo-tree.sources.manager").navigate("filesystem")
+      end,
+    }},
     window = {
       position = "left",
       width = 35,
+      mappings = {
+        ["/"] = "filter_on_submit",
+        ["<esc>"] = "clear_filter",
+      },
     },
   })
   vim.api.nvim_create_autocmd("VimEnter", {
@@ -109,6 +120,14 @@ end
 local ok2, gitsigns = pcall(require, "gitsigns")
 if ok2 then
   gitsigns.setup()
+end
+
+local ok3, tsconfigs = pcall(require, "nvim-treesitter.configs")
+if ok3 then
+  tsconfigs.setup({
+    ensure_installed = { "go", "python", "typescript", "javascript", "rust", "json", "sql", "lua" },
+    highlight = { enable = true },
+  })
 end
 EOF
 
