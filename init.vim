@@ -180,3 +180,5 @@ nnoremap <silent> <C-q> :silent CocRestart<CR>
 nnoremap <C-s> :w<CR>
 inoremap <C-s> <Esc>:w<CR>
 
+nnoremap <silent> <Esc> :noh<CR>
+
