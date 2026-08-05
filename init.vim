@@ -176,7 +176,7 @@ nmap <silent> gi <Plug>(coc-implementation)
 nmap <silent> gy <Plug>(coc-type-definition)
 
 nnoremap <silent> K :call CocActionAsync('doHover')<CR>
-nnoremap <silent> <C-q> :silent CocRestart<CR>
+nnoremap <silent> <C-q> :silent! checktime<CR>:silent CocRestart<CR>
 nnoremap <C-s> :w<CR>
 inoremap <C-s> <Esc>:w<CR>
 
