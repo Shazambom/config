@@ -21,6 +21,10 @@ nvim --headless +"CocUpdateSync" +qall
 
 echo "coc extensions updated"
 
+nvim --headless +"CocCommand go.install.gopls" +qall
+
+echo "gopls updated"
+
 nvim --headless +"TSUpdateSync" +qall
 
 echo "treesitter parsers updated"

@@ -174,12 +174,19 @@ nmap <silent> gd <Plug>(coc-definition)
 nmap <silent> gr <Plug>(coc-references)
 nmap <silent> gi <Plug>(coc-implementation)
 nmap <silent> gy <Plug>(coc-type-definition)
-function! s:RenameAndSave() abort
-  if CocAction('rename')
+function! s:RenameDone(err, result) abort
+  if a:err isnot v:null
+    echohl ErrorMsg | echomsg 'Rename failed: ' . string(a:err) | echohl None
+  elseif a:result
     silent! wa
+    echomsg 'Renamed and saved all buffers'
+  else
+    echohl WarningMsg
+    echomsg 'Rename cancelled or rejected by the language server — run :messages for the reason'
+    echohl None
   endif
 endfunction
-nnoremap <silent> gn :call <SID>RenameAndSave()<CR>
+nnoremap <silent> gn :call CocActionAsync('rename', function('<SID>RenameDone'))<CR>
 
 nnoremap <silent> K :call CocActionAsync('doHover')<CR>
 nnoremap <silent> <C-q> :silent! checktime<CR>:silent CocRestart<CR>
