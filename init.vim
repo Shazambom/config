@@ -174,6 +174,12 @@ nmap <silent> gd <Plug>(coc-definition)
 nmap <silent> gr <Plug>(coc-references)
 nmap <silent> gi <Plug>(coc-implementation)
 nmap <silent> gy <Plug>(coc-type-definition)
+function! s:RenameAndSave() abort
+  if CocAction('rename')
+    silent! wa
+  endif
+endfunction
+nnoremap <silent> gn :call <SID>RenameAndSave()<CR>
 
 nnoremap <silent> K :call CocActionAsync('doHover')<CR>
 nnoremap <silent> <C-q> :silent! checktime<CR>:silent CocRestart<CR>
