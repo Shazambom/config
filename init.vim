@@ -77,7 +77,7 @@ Plug 'macguirerintoul/night_owl_light.vim'
 Plug 'catppuccin/nvim', { 'as': 'catppuccin' }
 
 " https://github.com/nvim-treesitter/nvim-treesitter
-Plug 'nvim-treesitter/nvim-treesitter', {'do': ':TSUpdate'}
+Plug 'nvim-treesitter/nvim-treesitter', {'branch': 'main', 'do': ':TSUpdate'}
 
 " Initialize plugin system
 call plug#end()
@@ -122,11 +122,17 @@ if ok2 then
   gitsigns.setup()
 end
 
-local ok3, tsconfigs = pcall(require, "nvim-treesitter.configs")
+-- nvim-treesitter main branch: install() replaces configs.setup, and
+-- highlighting must be started per-buffer via vim.treesitter.start
+local ok3, ts = pcall(require, "nvim-treesitter")
 if ok3 then
-  tsconfigs.setup({
-    ensure_installed = { "go", "python", "typescript", "javascript", "rust", "json", "sql", "lua" },
-    highlight = { enable = true },
+  local ts_langs = { "go", "python", "typescript", "javascript", "rust", "json", "sql", "lua" }
+  ts.install(ts_langs)
+  vim.api.nvim_create_autocmd("FileType", {
+    pattern = ts_langs,
+    callback = function()
+      pcall(vim.treesitter.start)
+    end,
   })
 end
 EOF

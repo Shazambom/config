@@ -1,0 +1,6 @@
+{
+  // gopls is managed by init.sh (go install); with goplsPath set,
+  // coc-go skips its own install and the startup version check.
+  "go.goplsPath": "~/go/bin/gopls",
+  "go.checkForUpdates": "disabled"
+}
