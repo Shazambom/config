@@ -33,6 +33,11 @@ GOBIN="$HOME/go/bin" go install golang.org/x/tools/gopls@latest
 
 echo "gopls updated"
 
+# delve, used by nvim-dap-go for debugging
+GOBIN="$HOME/go/bin" go install github.com/go-delve/delve/cmd/dlv@latest
+
+echo "dlv updated"
+
 nvim --headless "+lua require('nvim-treesitter').install({'go','python','typescript','javascript','rust','json','sql','lua'}):wait(600000)" +qall
 
 echo "treesitter parsers updated"

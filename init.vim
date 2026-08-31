@@ -79,6 +79,13 @@ Plug 'catppuccin/nvim', { 'as': 'catppuccin' }
 " https://github.com/nvim-treesitter/nvim-treesitter
 Plug 'nvim-treesitter/nvim-treesitter', {'branch': 'main', 'do': ':TSUpdate'}
 
+" Debugging (nvim-dap stack; dlv is installed by init.sh)
+Plug 'mfussenegger/nvim-dap'
+Plug 'nvim-neotest/nvim-nio'
+Plug 'rcarriga/nvim-dap-ui'
+Plug 'theHamsta/nvim-dap-virtual-text'
+Plug 'leoluz/nvim-dap-go'
+
 " Initialize plugin system
 call plug#end()
 
@@ -134,6 +141,70 @@ if ok3 then
       pcall(vim.treesitter.start)
     end,
   })
+end
+
+-- Debugging: nvim-dap + dap-ui + dap-go
+local okd, dap = pcall(require, "dap")
+local oku, dapui = pcall(require, "dapui")
+if okd and oku then
+  dapui.setup()
+  pcall(function() require("nvim-dap-virtual-text").setup() end)
+  pcall(function() require("dap-go").setup() end)
+
+  dap.listeners.after.event_initialized.dapui_config = function() dapui.open() end
+  dap.listeners.before.event_terminated.dapui_config = function() dapui.close() end
+  dap.listeners.before.event_exited.dapui_config = function() dapui.close() end
+  dap.listeners.after.disconnect.dapui_config = function() dapui.close() end
+
+  local function debug_smart()
+    if vim.fn.expand("%"):match("_test%.go$") then
+      require("dap-go").debug_test()
+    else
+      require("dap-go").debug_last_test()
+    end
+  end
+
+  local overlay = {
+    { "n", dap.step_over, "next" },
+    { "s", dap.step_into, "into" },
+    { "o", dap.step_out, "out" },
+    { "c", dap.continue, "continue" },
+    { "r", dap.run_to_cursor, "to-cursor" },
+    { "b", dap.toggle_breakpoint, "break" },
+    { "e", function() dapui.eval() end, "eval" },
+    { "q", dap.terminate, "quit" },
+  }
+  local saved_maps = {}
+  local function overlay_on()
+    saved_maps = {}
+    for i, m in ipairs(overlay) do
+      saved_maps[i] = vim.fn.maparg(m[1], "n", false, true)
+      vim.keymap.set("n", m[1], m[2], { desc = "dap: " .. m[3] })
+    end
+    vim.notify("DEBUG  n:next s:into o:out c:continue r:to-cursor b:break e:eval q:quit")
+  end
+  local function overlay_off()
+    for i, m in ipairs(overlay) do
+      pcall(vim.keymap.del, "n", m[1])
+      local s = saved_maps[i]
+      if s and s.lhs then pcall(vim.fn.mapset, "n", false, s) end
+    end
+    saved_maps = {}
+  end
+  dap.listeners.after.event_initialized.debug_keys = overlay_on
+  dap.listeners.before.event_terminated.debug_keys = overlay_off
+  dap.listeners.before.event_exited.debug_keys = overlay_off
+  dap.listeners.after.disconnect.debug_keys = overlay_off
+
+  -- Entry points: chords for speed, commands for discoverability
+  vim.keymap.set("n", "<C-b>", dap.toggle_breakpoint, { desc = "dap: toggle breakpoint" })
+  vim.keymap.set("n", "<C-t>", debug_smart, { desc = "dap: debug test / rerun last" })
+  vim.api.nvim_create_user_command("Break", function() dap.toggle_breakpoint() end, {})
+  vim.api.nvim_create_user_command("Cond", function()
+    dap.set_breakpoint(vim.fn.input("Breakpoint condition: "))
+  end, {})
+  vim.api.nvim_create_user_command("Debug", debug_smart, {})
+  vim.api.nvim_create_user_command("DebugUI", function() dapui.toggle() end, {})
 end
 EOF
 
