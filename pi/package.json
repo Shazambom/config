@@ -1,0 +1,12 @@
+{
+  "name": "portable-pi-config",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.19.0" },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "pi-diff-review": "0.1.26",
+    "pi-subagents": "0.66.0",
+    "pi-web-access": "0.28.0"
+  }
+}

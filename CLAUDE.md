@@ -14,6 +14,32 @@ never hand-edit or hand-install anything on the local machine.**
   to `main` broke us), and use `PlugUpdate --sync`, not `PlugInstall`, so
   existing machines follow branch changes.
 
+## Scripting preference
+
+- Prefer Bash over JavaScript/TypeScript for repository scripts, including
+  setup, deployment, automation, and tests. Bash is more broadly available;
+  do not introduce a JS runtime dependency merely for scripting convenience.
+- Keep scripts portable across macOS and Linux: target Bash 3.2 where practical
+  and avoid GNU-only utilities/options unless bootstrap installs them.
+- Use `jq` for JSON parsing, generation, transformation, and assertions, not
+  Node/JavaScript snippets. Bootstrap required tools through `init.sh`.
+- Use another language only when Bash is genuinely unsuitable or an upstream
+  API requires it. Keep exceptions small and explain why they are needed;
+  an existing Node dependency is not by itself a reason to choose JavaScript.
+
+## Portable Pi
+
+`./init.sh` sets up both Pi and Neovim. `./init.sh --pi` sets up only Pi;
+keep that fast path so launching Pi does not run Neovim/tool updates.
+
+`./pi.sh` installs/deploys via `./init.sh --pi` and launches Pi without nvim
+prerequisites. Sources live under `pi/`; see `pi/README.md`. Edit defaults in
+`pi/agent/`, never the deployed state under `~/.pi/agent`. Setup installs global Pi only
+if missing; existing Pi versions update independently. This repo owns custom
+configuration and plugin pins, so ordinary `pi` uses this repository's defaults.
+Claude skills/commands are read from `~/.claude`, not vendored. Keep credentials
+and sessions out of git. All future Pi config must also deploy via `init.sh`.
+
 ## Debugging
 
 1. Rerun `./init.sh` first; most breakage is drift it already fixes.

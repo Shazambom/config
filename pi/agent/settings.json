@@ -1,0 +1,25 @@
+{
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-6-astra",
+  "defaultThinkingLevel": "medium",
+  "theme": "dark",
+  "enableInstallTelemetry": false,
+  "enableSkillCommands": true,
+  "skills": ["~/.claude/skills"],
+  "prompts": [],
+  "packages": [
+    { "source": "../node_modules/pi-subagents", "prompts": [] },
+    "../node_modules/pi-web-access",
+    "../node_modules/pi-diff-review"
+  ],
+  "subagents": {
+    "disableBuiltins": true,
+    "defaultModel": "inherit",
+    "defaultThinking": "medium",
+    "defaultExtensions": [],
+    "watchdog": { "enabled": false, "children": { "enabled": false } },
+    "agentOverrides": {
+      "researcher": { "extensions": ["../node_modules/pi-web-access/index.ts"] }
+    }
+  }
+}
