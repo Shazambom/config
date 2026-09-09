@@ -1,0 +1,8 @@
+--- a/extensions/prompt-snippets/index.ts
++++ b/extensions/prompt-snippets/index.ts
+@@ -7,1 +7,1 @@
+- * - Press alt+s or run /snippets to open the toggle menu (space: toggle,
++ * - Press ctrl+r or run /snippets to open the toggle menu (space: toggle,
+@@ -312,1 +312,1 @@
+-	pi.registerShortcut("alt+s", {
++	pi.registerShortcut("ctrl+r", {

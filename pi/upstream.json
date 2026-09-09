@@ -2,6 +2,7 @@
   {
     "name": "pi-config",
     "ref": "f82da563ab05d66729492d64c7ed4e96db3663f3",
+    "patch": "prompt-snippets.patch",
     "sha256": "2870d34d75de75d59410d272741d58e98bc92184769e2c71e518602178b7c8cc",
     "paths": ["extensions/browser", "extensions/prompt-snippets", "extensions/web-fetch", "extensions/web-search"]
   },

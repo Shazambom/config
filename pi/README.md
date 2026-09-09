@@ -382,7 +382,9 @@ PI_CODING_AGENT_DIR="$HOME/.pi/agent" node pi/tests/mcp-fixture.mjs --live
 ### Prompt snippets
 
 [Prompt snippets](https://github.com/amosblomqvist/pi-config/tree/main/extensions/prompt-snippets)
-provides `/snippets` and Alt+S. Select rules for the next message; toggles reset
+provides `/snippets` and Ctrl+R in the prompt editor. Setup applies
+`pi/patches/prompt-snippets.patch` to bind this shortcut; the session picker's
+Ctrl+R rename action remains separate. Select rules for the next message; toggles reset
 after sending. All seven snippet sources live together in
 `pi/agent/extensions/prompt-snippets/snippets/`. This repo owns their contents;
 setup does not copy snippets from downloaded upstream sources. The six original
