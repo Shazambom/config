@@ -65,6 +65,22 @@ jq -e '.["observational-memory"].compactAtContextTokens == 700000 and
   .compaction.enabled == true and .compaction.reserveTokens == 128000 and
   .compaction.keepRecentTokens == 40000' "$agent/settings.json" >/dev/null || fail 'Long-context compaction drift'
 cmp -s "$repo/pi/agent/models.json" "$agent/models.json" || fail 'Model overrides not deployed'
+jq -e '.theme == "vim-darcula"' "$agent/settings.json" >/dev/null || fail 'Theme default drift'
+for theme in vim-darcula jetbrains-dark; do
+  cmp -s "$repo/pi/agent/themes/$theme.json" "$agent/themes/$theme.json" || fail 'Theme not deployed'
+  jq -e --arg name "$theme" --slurpfile base "$repo/pi/node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/dark.json" '
+    . as $theme |
+    .name == $name and
+    (($base[0].colors | keys) - (.colors | keys) | length == 0) and
+    all(.colors[]; . as $color | ($theme.vars[$color] // $color) | test("^#[0-9A-Fa-f]{6}$")) and
+    .colors.toolPendingBg == .colors.toolSuccessBg and
+    .colors.toolSuccessBg == .colors.toolErrorBg
+  ' "$agent/themes/$theme.json" >/dev/null || fail 'Theme colors invalid'
+done
+jq -e '.vars.editor == "#2B2B2B" and .vars.text == "#A9B7C6" and
+  .vars.orange == "#CC7832" and .vars.green == "#6A8759" and
+  .colors.syntaxFunction == "#FFC66D" and .colors.syntaxNumber == "#6897BB"' \
+  "$agent/themes/vim-darcula.json" >/dev/null || fail 'Vim palette drift'
 jq -e '.providers["openai-codex"].modelOverrides["gpt-6-astra"].contextWindow == 872000 and
   .providers.anthropic.modelOverrides["claude-fable-5"].contextWindow == 1000000 and
   .providers.anthropic.modelOverrides["claude-fable-5-1"].contextWindow == 1000000' "$agent/models.json" >/dev/null || fail 'Long-context model drift'

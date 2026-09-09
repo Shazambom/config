@@ -48,6 +48,27 @@ provider/account; override with `--provider` / `--model` if needed.
 ./init.sh                                  # Set up everything: Pi, then Neovim
 ```
 
+## Appearance
+
+The default `vim-darcula` theme uses the palette from `doums/darcula`, selected
+by `colorscheme darcula` in `init.vim`: `#2B2B2B` editor background, `#A9B7C6`
+text, orange keywords, yellow functions, green strings, and blue numbers.
+The palette is bundled here so Pi-only setup does not require Neovim plugins.
+Vim's separate `PaperColor_light` statusline is not used for Pi's palette.
+
+Pending, successful, and failed tool panels share the neutral editor background;
+errors still have red status text. Diff additions use green markers and deletions
+use gray, reflecting Darcula's gray deletions rather than red panels. Pi's limited
+color tokens do not reproduce Vim's per-line diff backgrounds or full syntax groups.
+The terminal's base background is unchanged; use `#2B2B2B` there for a full match.
+The `jetbrains-dark` theme remains available as an alternative.
+
+Select it under `/settings` → Theme after setup, or restart Pi. Edit
+`pi/agent/themes/vim-darcula.json` and rerun `./init.sh --pi` to tune it.
+The active custom theme hot-reloads when its deployed file changes. Set the
+portable default in `pi/agent/settings.json`; setup resets choices saved only
+through `/settings`.
+
 ## Claude commands and skills
 
 `claude/skills/` and `claude/commands/` contain portable snapshots from the
