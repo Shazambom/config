@@ -3,10 +3,15 @@
   "private": true,
   "type": "module",
   "engines": { "node": ">=22.19.0" },
+  "devDependencies": { "jiti": "2.7.0" },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "0.85.1",
     "pi-diff-review": "0.1.26",
-    "pi-subagents": "0.66.0",
-    "pi-web-access": "0.28.0"
+    "@sinclair/typebox": "0.34.49",
+    "@mozilla/readability": "0.6.0",
+    "linkedom": "0.16.11",
+    "playwright-core": "1.60.0",
+    "turndown": "7.2.4",
+    "unpdf": "1.4.0"
   }
 }

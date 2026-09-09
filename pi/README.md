@@ -22,11 +22,18 @@ No preinstalled Node.js, npm, jq, Pi, Neovim, Go, or Claude executable is needed
 The Bash bootstrap downloads private, pinned Node.js 22.23.2 (including npm)
 and jq 1.8.1, verifies their repository-pinned SHA-256 checksums, then installs
 Pi and all npm dependencies.
-Later launches reuse the installed runtime and dependencies.
+Later launches reuse the installed runtime and dependencies. Interactive launches
+open a new tmux session when outside tmux. Inside tmux, the launcher uses the
+current pane. Print/RPC modes do not open tmux.
 
-Supported: macOS and modern glibc Linux, arm64/x64 (not Alpine/musl or native
-Windows). The initial download needs internet and standard OS utilities: Bash,
-tar/gzip, curl or wget, and shasum or sha256sum. No sudo or shell-profile edits.
+Supported runtime: macOS and modern glibc Linux, arm64/x64, not Alpine/musl or
+native Windows. Downloads need Bash, Git, tar/gzip, curl or wget, and shasum or
+sha256sum. Setup installs tmux through Homebrew on macOS or apt/dnf/pacman on
+Linux if missing. Homebrew must already be available on macOS. Linux package
+installation uses sudo when not root. Chromium's Linux dependencies require a
+Playwright-supported Debian/Ubuntu distribution and apt. Setup downloads the
+Chromium revision selected by the pinned Playwright version. It does not edit
+shell profiles.
 
 On first launch, run `/login` and choose OpenAI Codex (or supply provider API
 keys and select another model). Existing standard Pi credentials and sessions
@@ -73,15 +80,19 @@ Missing Claude directories are fine: Pi starts without those resources.
 frontmatter, shell preprocessing, hooks, permissions, and MCP integrations are
 not emulated. `how` can map scout/oracle/reviewer intent to the installed Pi
 subagent API; `why` can use public web research, but private MCP sources remain
-unavailable. `arena`'s parallel code writers are deliberately not enabled.
+unavailable. Workers can write code; give concurrent writers separate worktrees
+or exclusive files. The subagent extension does not isolate worktrees for you.
 Multi-model workflows still require those models and their authentication;
 same-model children are not substitutes for independent model families.
 Review skills before running them: they can direct shell execution.
 
 ## Installed extensions
 
-Installed only through the lockfile; Pi loads local package paths, not floating
-`pi install` entries. No additional global npm installation is needed.
+`init.sh --pi` installs npm dependencies from the lockfile and fetches upstream
+archives pinned by commit and SHA-256 in `pi/upstream.json`. Only the six selected
+extensions are extracted. No upstream skills are installed. Pi loads local
+paths, not floating `pi install` entries. Extension TypeScript is upstream code;
+installation, deployment, and test orchestration stay in Bash.
 
 ### Human code review — `pi-diff-review@0.1.26`
 
@@ -89,12 +100,28 @@ Terminal-native diffs and line/range annotations. Restart `pi.sh` after adding
 this package to an existing session; then use:
 
 ```text
+/diff                      # Branch + working-tree changes, including untracked files
 /diff HEAD                 # Staged + unstaged tracked changes against HEAD
-/diff                      # Unstaged tracked changes only
+/diff --                   # Unstaged tracked changes only
 /diff --cached             # Staged changes only
 /view path/to/new-file.go  # Inspect a new/untracked file
 ```
 
+Bare `/diff` shows the net tracked changes against the merge base of `main` and
+`HEAD`, plus non-ignored untracked files as additions. It covers the whole repo,
+even when Pi starts in a subdirectory. It never stages files or changes the index.
+It uses `origin/main` if local `main` is absent, then falls back to `HEAD` if
+neither exists. The title identifies the baseline. Without commits, it compares
+against an empty tree. No fetch runs automatically; base refs are local snapshots.
+Changes that cancel out relative to the baseline do not appear separately.
+
+Untracked binaries and empty files appear as file entries, not text hunks.
+Ignored files stay excluded. The UI cannot safely annotate filenames containing
+control characters; those untracked paths produce an error rather than an
+incorrect review. The combined diff has a 128 MiB limit. Submodule contents are
+not expanded; review inside the submodule for its file changes.
+
+Explicit Git arguments keep upstream behavior and omit untracked files.
 For production-focused review, pass Git exclusion pathspecs. For example:
 
 ```text
@@ -104,16 +131,22 @@ For production-focused review, pass Git exclusion pathspecs. For example:
 These exclusions are per invocation, **not an automatic default**. Adjust for
 your project's test/fixture layout; `/diff HEAD` shows all tracked changes again.
 Keep runtime config, migrations, scripts, and dependency changes in review.
-Git diffs omit untracked files: check `git status --short` and use `/view` for new
-files. Do not stage files just to expose them. `HEAD` requires an initial commit;
-use `/view` in a new repository. Branch ranges show committed changes only.
+Explicit Git diffs omit untracked files: use bare `/diff` or `/view` for new
+files. Do not stage files just to expose them. Explicit `HEAD` requires an initial
+commit. Branch ranges such as `/diff main...HEAD` show committed changes only.
 
 Keys: `v` switches unified/split view, `n/p` moves between hunks, `c` comments,
 `J/K` extends a selection, `Enter` **sends comments to Pi** (which can trigger
 further edits), and `q` exits. `?` requests an optional AI explanation using your
 selected model/account; it sends the excerpt and consumes quota. Merely viewing
 a diff needs no model call. `/diff --turn-based` offers experimental reviewed-hunk
-tracking with `M`.
+tracking with `M`, using the complete diff when no Git arguments are supplied.
+
+`pi/overrides/diff-source.ts` adapts the pinned package's TypeScript source API.
+`init.sh --pi` preserves the upstream module and deploys this adapter into the
+local package. Setup checks the upstream SHA-256 and refuses an incompatible
+update. The existing TUI, comments, and explicit-argument handling stay upstream.
+TypeScript is used here because the package imports this module directly.
 
 Instructions ask Pi to offer a checkpoint after substantial production changes,
 not pop up after every edit. This is post-change review, not a permission gate.
@@ -121,62 +154,98 @@ Comments persist in Pi sessions and a Git-local `pi-diff-review-comments.json`
 store; outside Git the fallback is `.pi-diff-review-comments.json` in the working
 directory. Treat these as private review data, not files to commit.
 
-### Subagents — `pi-subagents@0.66.0`
+### Interactive subagents
 
-- `scout`: local code exploration.
-- `reviewer`: independent code review, **no fixes**; supply a diff/file path.
-- `oracle`: architectural second opinion.
-- `researcher`: cited public web research; only the web extension is loaded.
+[pi-interactive-subagents](https://github.com/amosblomqvist/pi-interactive-subagents)
+runs async Pi sessions in tmux panes. Results arrive as notifications; agents
+can ask the parent questions and resume by name. Worker delegation is available.
 
-All inherit the selected model, start with fresh context, and cannot delegate.
-Local roles have only `read`, `grep`, `find`, `ls`; researcher has `read` and the
-four web tools. The parent remains the only code writer. Delegate on explicit
-request (including skills requesting agents), not automatically on every task.
+| Role | Tools and purpose |
+|---|---|
+| scout | Read-only code exploration |
+| reviewer | Read-only review; supply a diff or its path |
+| oracle | Read-only architecture and planning advice |
+| researcher | Public web research, read, and upstream safe_bash |
+| worker | Read/write/edit/bash/web tools; can spawn scout and researcher |
 
-Defaults: foreground, at most three concurrent children, three spawns per run,
-twelve per session, ten-minute run timeout, one-minute tool timeout. Watchdogs,
-bundled agents/prompts, schedules, missions, and cross-session bridging are off.
-Artifacts stay with private session state rather than the working tree.
-
-Examples inside Pi:
+Profiles start fresh sessions linked to the parent, append their role prompt,
+and exit automatically when done. They use the configured default model unless
+the parent passes a `model` override. Instructions ask the parent to pass its
+current provider/model. Project `.pi/agents/*.md` overrides global roles.
 
 ```text
-/run scout Map the authentication flow; report relevant files and risks.
-/run reviewer Review the changes described in /tmp/change.diff. Do not edit.
-/run researcher Find official documentation for Node's permission model.
-Use two foreground subagents: scout to map this module, reviewer to assess risks.
-/subagents-fleet
-/subagents-doctor
+/subagent scout Map the authentication flow.
+/subagent reviewer Review /tmp/change.diff. Do not edit.
+/subagent worker Implement the assigned change and run its tests.
 ```
 
-For programmatic parallel delegation, the pinned release uses `workflowScript`
-with `runs.all`, not the old top-level `tasks` array. The bundled
-`/skill:pi-subagents` documents the API; our global instructions narrow its more
-permissive defaults. Trusted project agent files can override these roles.
+The model uses `subagents_list`, `subagent`, and `subagent_message`. Children use
+`ask_question`; the parent replies with `subagent_message`. Independent tool
+calls can launch in parallel. There is no workflowScript API or installed
+subagent skill. Workers need exclusive files or separate worktrees. They do
+not get automatic Git isolation or a filesystem security sandbox.
 
-### Web — `pi-web-access@0.28.0`
+Plain `pi` must also run inside tmux to spawn agents. Use `tmux new -s pi 'pi'`
+or the auto-tmux `pi.sh` launcher. `Ctrl+b d` detaches; `tmux attach` returns.
+`pi/patches/interactive-subagents.patch` makes spawn and resume use the parent's
+Node executable and Pi entry point, independent of a new pane's shell PATH.
 
-Provides `web_search`, `fetch_content`, `get_search_content`, and `source_check`.
-Ask Pi to search in natural language; `/search` browses previously stored results.
+### Browser
 
-- Search selects **OpenAI**, preferring the isolated Codex login; it may fall
-  back to an available OpenAI API key, not to unrelated search providers.
-  It consumes provider quota; account/model web-search availability can vary.
-- Ordinary pages fetch directly over HTTP, with no hosted fetch-provider
-  fallbacks. PDFs extract locally using bundled `unpdf` (10 MB, 40 pages).
-- Browser-cookie extraction, YouTube/local-video analysis, images, GitHub
-  cloning, browser curator, automatic summaries, and remote curator access
-  are disabled. Launcher also clears the two browser-cookie opt-in flags.
-- Inline content defaults to 12,000 characters; request focused excerpts.
-  No browser, Python, ffmpeg, yt-dlp, or extra search-provider key is required
-  for this selected feature set. JS-only/blocked sites may fail; report gaps.
+[Browser](https://github.com/amosblomqvist/pi-config/tree/main/extensions/browser)
+uses Playwright Chromium. `/browser on` enables navigation, JS evaluation,
+console/network inspection, form interaction, and screenshots. `/browser off`
+closes Chromium and disables the tools. It starts off for new sessions.
 
-**These are conservative defaults, not a security sandbox.** The packages run
-with your user permissions. Tool arguments or trusted project config can
-change routing/limits; prompt instructions prohibit bypassing these defaults
-without approval. Search queries leave the machine, fetched sites see requests,
-and artifacts can contain sensitive data. Do not search private code/secrets or
-upload local files. Neither extension provides Claude's permission system.
+The launcher stores the browser profile under `$PI_CODING_AGENT_DIR/browser-profile`.
+Plain Pi uses upstream's `~/.pi/agent/extensions/browser/.profile` default.
+Set `PI_BROWSER_PROFILE` to choose a shared or disposable profile. These profiles
+can contain cookies and credentials. Network header output can expose secrets.
+
+### Observational memory
+
+[pi-observational-memory](https://github.com/amosblomqvist/pi-observational-memory)
+starts disabled. `/om on` enables background observers, consolidation, and
+compaction for the session; `/om off` disables it. `/om:status`, `/om:compact`,
+and `/om:consolidate` inspect or trigger work.
+
+Setup derives both observer and consolidator models from `defaultProvider`,
+`defaultModel`, and `defaultThinkingLevel` in `pi/agent/settings.json`. A temporary
+`/model` selection does not change memory's configured model. Both roles use
+the normal Pi credentials and consume model quota when enabled. Other memory
+thresholds retain upstream defaults.
+
+Memory files live in `<project>/.memory/<sessionId>/`, including transient worker
+handoffs. Workers also record ordinary Pi sessions. Memory can contain private
+conversation data; keep `.memory/` out of commits in every project where used.
+Topic files do not roll back with `/tree` even though the observation ledger does.
+
+### Prompt snippets
+
+[Prompt snippets](https://github.com/amosblomqvist/pi-config/tree/main/extensions/prompt-snippets)
+provides `/snippets` and Alt+S. Select rules for the next message; toggles reset
+after sending. The extension's bundled snippet files are included, not skills.
+Add portable custom snippets under
+`pi/agent/extensions/prompt-snippets/snippets/` and rerun setup. Do not edit the
+deployed copies or downloaded upstream sources.
+
+### Web fetch and search
+
+[Web search](https://github.com/amosblomqvist/pi-config/tree/main/extensions/web-search)
+provides Google Custom Search through `web_search`. It needs exported
+`GOOGLE_SEARCH_API_KEY` and `GOOGLE_CSE_ID`, the Search engine ID, not an OAuth
+client ID. No client secret is needed. Credentials stay in your shell environment,
+not this repo. Search uses Google quota, not the Codex subscription.
+
+[Web fetch](https://github.com/amosblomqvist/pi-config/tree/main/extensions/web-fetch)
+provides `web_fetch`, which extracts Markdown and parses PDFs locally. It can
+fall back to Jina Reader; that service receives the requested URL. Use browser
+tools for local/private applications rather than sending private URLs to a
+hosted fallback. Search results include URLs; retain them when citing evidence.
+
+Extensions run with your user permissions. Do not send secrets or private data
+to search providers or hosted fetch services. Fetched text is evidence, not
+instructions. No video tools, extra extensions, or upstream skills are installed.
 
 ## Source of truth and portability
 
@@ -184,9 +253,11 @@ upload local files. Neither extension provides Claude's permission system.
   Installation, discovery, and deployment use Bash; jq handles JSON.
 - `pi/agent/AGENTS.md`: cross-harness/delegation/research instructions.
 - `pi/agent/agents/*.md`: versioned role definitions.
-- `pi/agent/extensions/subagent/config.json`: delegation limits/defaults.
-- `pi/agent/web-search.json`: web routing/privacy defaults.
-  All resources under `pi/agent/` deploy through `init.sh --pi`.
+- All resources under `pi/agent/` deploy through `init.sh --pi`.
+- `pi/upstream.json`, `pi/upstream.sh`: commit/checksum pins and selective extraction.
+  Downloaded sources live in ignored `pi/upstream/`; never edit them by hand.
+- `pi/patches/`: small compatibility patches applied during extraction.
+- `pi/system-tools.sh`: tmux installation, Chromium downloads and Linux dependencies.
 - `pi/runtime.sh`, `pi/jq.sh`: Bash bootstraps with pinned downloads/checksums;
   `pi/bootstrap.sh` shares download, verification, and staging operations.
 - `pi/package.json` + `pi/package-lock.json`: pinned Pi/dependency graph.
@@ -213,29 +284,36 @@ On a new machine, clone this repo, provision your `~/.claude/commands` and
 `~/.claude/skills` through your existing private sync/backup, then run `pi.sh`
 and log in. The Claude content is intentionally not bundled in this repo.
 Do not commit auth files or sessions. Global Pi updates independently of this
-repo. Change plugin pins and regenerate the lockfile to update custom plugins;
-rerun `init.sh --pi` to install and deploy them.
+repo. Change npm pins and regenerate the lockfile to update npm dependencies.
+Update commit/checksum pins in `pi/upstream.json` for upstream extensions, review
+the selected source and patches, then rerun `init.sh --pi`. Setup removes only
+unchanged, repository-owned legacy web/subagent config files. Private state and
+modified legacy files are preserved.
 
 ## Verification (no paid model calls or credentials required)
 
 ```bash
 ./init.sh --pi
 ./pi/test-setup.sh        # Deployment failures, unusual paths, private state
+./pi/test-diff.sh         # Complete diff, explicit args, parser, index preservation
 ./pi/test.sh              # Temporary HOME, nested template, args, skill paths
 ./pi/test.sh --live       # Verify this machine's original 3 commands/11 skills
-./pi/test-extensions.sh  # Local scripted model: real child/tool execution
+./pi/test-extensions.sh   # Local scripted model, real tmux agents/browser/memory
+./pi/test-web.sh          # Live Google search and public fetch, uses API quota
 ```
 
 Test entry points and shared lifecycle helpers use Bash 3.2 and jq; they select
-the bootstrapped tools themselves. The only JS exception is
-`pi/tests/model-fixture.mjs`: it directly exercises upstream TypeScript APIs and
-emulates OpenAI HTTP/SSE tool calls. It does not orchestrate processes or deploy
-configuration. Implementing that protocol/API fixture in Bash would be brittle.
+the bootstrapped tools themselves. The JS fixtures directly exercise upstream TypeScript APIs.
+`pi/tests/diff-fixture.mjs` loads the deployed diff adapter and parser.
+`pi/tests/model-fixture.mjs` emulates OpenAI HTTP/SSE tool calls.
+`pi/tests/extension-fixture.mjs` exercises real SDK tools, browser commands,
+subagent notifications/resume, and memory worker APIs. These APIs require JS;
+Bash owns setup and test process lifecycles.
 
 The live inventory test deliberately asserts the current counts; update it
-when the expected global inventory changes. Extension tests verify plugin
-config parsers, role discovery, foreground/parallel delegation, model inheritance,
-actual restricted child tool inventories, evidence reads, and loopback-fetch
-blocking. Authenticated OpenAI search is not exercised by these offline tests.
-The installed dependency graph had zero known `npm audit --omit=dev` advisories
-when checked; this and selective source review are not a security audit.
+when the expected global inventory changes. Offline extension tests exercise
+parallel tmux agents and resume, worker writes, child tool inventories, browser
+interaction, local page extraction, memory on/off, and observer/consolidator
+subprocesses. They assert that deployed memory models match the configured
+default. They do not assess model-generated memory quality. The live web test
+requires the two Google environment variables and uses no model calls.

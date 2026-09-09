@@ -41,9 +41,9 @@ jq -es --argjson live "$live" --arg home "$HOME" '
   def check(condition; message): if condition then . else error(message) end;
   . as $responses |
   .[0].commands | map(. + {path: (.path // .sourceInfo.path)}) |
-  reduce ["run", "subagents-doctor", "subagents-fleet", "search", "diff", "view"][] as $name
+  reduce ["subagent", "browser", "snippets", "om", "om:status", "om:compact", "om:consolidate", "diff", "view"][] as $name
     (.; check(any(.[]; .name == $name and .source == "extension"); "Missing extension command /" + $name)) |
-  reduce ["websearch", "curator", "google-account", "review-loop"][] as $name
+  reduce ["run", "subagents-doctor", "subagents-fleet", "search", "websearch", "curator", "google-account", "review-loop", "skill:pi-subagents", "skill:council-mode"][] as $name
     (.; check(all(.[]; .name != $name); "Unexpected command /" + $name)) |
   if $live then
     map(select((.path // "") | startswith($home + "/.claude/"))) |

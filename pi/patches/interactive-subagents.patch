@@ -1,0 +1,8 @@
+--- a/pi-extension/subagents/index.ts
++++ b/pi-extension/subagents/index.ts
+@@ -1318,1 +1318,1 @@
+-  const parts: string[] = ["pi"];
++  const parts: string[] = [shellEscape(process.execPath), shellEscape(resolve(process.argv[1]))];
+@@ -2156,1 +2156,1 @@
+-        const parts = ["pi", "--session", shellEscape(sessionPath)];
++        const parts = [shellEscape(process.execPath), shellEscape(resolve(process.argv[1])), "--session", shellEscape(sessionPath)];

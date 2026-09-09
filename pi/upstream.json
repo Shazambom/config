@@ -1,0 +1,21 @@
+[
+  {
+    "name": "pi-config",
+    "ref": "f82da563ab05d66729492d64c7ed4e96db3663f3",
+    "sha256": "2870d34d75de75d59410d272741d58e98bc92184769e2c71e518602178b7c8cc",
+    "paths": ["extensions/browser", "extensions/prompt-snippets", "extensions/web-fetch", "extensions/web-search"]
+  },
+  {
+    "name": "pi-interactive-subagents",
+    "ref": "c3e8b53c0754ae5ccc19fdab5a7481ec039bc2f7",
+    "sha256": "f19c9f054bcce671b1f307a8bbf9c0c9c036b681ca0f4d2d423571e21dbd47b8",
+    "patch": "interactive-subagents.patch",
+    "paths": ["LICENSE", "README.md", "package.json", "config.json.example", "pi-extension", "agents"]
+  },
+  {
+    "name": "pi-observational-memory",
+    "ref": "78a1efcfdd46332253fb289724f05b26dfc7769e",
+    "sha256": "dc9e07f06138903da789dbbcff18f11b6bd02ba35dc562ef7a59a83fad4387b7",
+    "paths": ["LICENSE", "README.md", "package.json", "src", "agent"]
+  }
+]

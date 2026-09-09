@@ -8,18 +8,8 @@
   "skills": ["~/.claude/skills"],
   "prompts": [],
   "packages": [
-    { "source": "../node_modules/pi-subagents", "prompts": [] },
-    "../node_modules/pi-web-access",
+    { "source": "../upstream/pi-interactive-subagents", "skills": [], "prompts": [], "themes": [] },
+    { "source": "../upstream/pi-observational-memory", "skills": [], "prompts": [], "themes": [] },
     "../node_modules/pi-diff-review"
-  ],
-  "subagents": {
-    "disableBuiltins": true,
-    "defaultModel": "inherit",
-    "defaultThinking": "medium",
-    "defaultExtensions": [],
-    "watchdog": { "enabled": false, "children": { "enabled": false } },
-    "agentOverrides": {
-      "researcher": { "extensions": ["../node_modules/pi-web-access/index.ts"] }
-    }
-  }
+  ]
 }

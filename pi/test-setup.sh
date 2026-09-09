@@ -10,10 +10,22 @@ odd_name=$'quoted "command"\nname.md'
 printf '%s\n' 'Unusual filename fixture.' > "$commands/nested/$odd_name"
 printf '%s\n' '{"fixture":"not a credential"}' > "$agent/auth.json"
 cp "$agent/auth.json" "$test_dir/auth.expected"
+mkdir -p "$agent/extensions/browser/.profile" "$agent/extensions/subagent"
+printf '%s\n' 'private browser fixture' > "$agent/extensions/browser/.profile/state"
+printf '%s\n' '{"custom":true}' > "$agent/web-search.json"
+cp "$repo/pi/tests/legacy-subagent-config.json" "$agent/extensions/subagent/config.json"
 "$repo/init.sh" --pi
 jq -e --arg path "$commands/nested/$odd_name" '.prompts | index($path) != null' \
   "$agent/settings.json" >/dev/null || fail 'Unusual command path changed'
 cmp -s "$agent/auth.json" "$test_dir/auth.expected" || fail 'Private auth overwritten'
+[[ "$(< "$agent/extensions/browser/.profile/state")" == 'private browser fixture' ]] || fail 'Browser profile overwritten'
+[[ "$(< "$agent/web-search.json")" == '{"custom":true}' ]] || fail 'Custom legacy config removed'
+[[ ! -e "$agent/extensions/subagent/config.json" ]] || fail 'Managed legacy config retained'
+for extension in browser prompt-snippets web-fetch web-search; do
+  [[ -f "$agent/extensions/$extension/index.ts" && -L "$agent/extensions/$extension/node_modules" ]] || fail "Missing $extension deployment"
+done
+jq -e 'has("subagents") | not' "$agent/settings.json" >/dev/null || fail 'Legacy subagent settings'
+jq -e '. as $s | .["observational-memory"].models | all(.[]; .provider == $s.defaultProvider and .id == $s.defaultModel)' "$agent/settings.json" >/dev/null || fail 'Memory model drift'
 cp "$agent/settings.json" "$test_dir/settings.expected"
 
 expect_setup_failure() {

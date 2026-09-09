@@ -15,11 +15,18 @@ fi
 source "$repo/pi/runtime.sh"
 source "$repo/pi/jq.sh"
 export PI_CODING_AGENT_DIR="${CONFIG_PI_HOME:-$HOME/.pi}/agent"
-# Global Pi updates independently; setup owns only custom resources.
-# Do not let unrelated shell opt-ins enable browser cookie extraction.
-export PI_ALLOW_BROWSER_COOKIES=0
-export FEYNMAN_ALLOW_BROWSER_COOKIES=0
-# Children inherit the runtime PATH and their own restricted agent directory.
-# Do not relaunch pi.sh: it would overwrite that child configuration.
-export PI_SUBAGENT_PI_BINARY="$pi_binary"
+export PI_BROWSER_PROFILE="${PI_BROWSER_PROFILE:-$PI_CODING_AGENT_DIR/browser-profile}"
+headless=false
+for arg; do
+  case "$arg" in
+    -p|--print|--mode|--help|-h|--version|-v|--list-models) headless=true ;;
+  esac
+done
+if [[ -z "${TMUX:-}" && -t 0 && -t 1 && "$headless" == false ]]; then
+  environment=()
+  for name in PATH PI_CODING_AGENT_DIR PI_BROWSER_PROFILE PLAYWRIGHT_BROWSERS_PATH GOOGLE_SEARCH_API_KEY GOOGLE_CSE_ID; do
+    if printenv "$name" >/dev/null 2>&1; then environment+=(-e "$name=${!name}"); fi
+  done
+  exec tmux new-session -c "$PWD" "${environment[@]}" -- "$pi_binary" "$@"
+fi
 exec "$pi_binary" "$@"
