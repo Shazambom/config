@@ -383,10 +383,12 @@ PI_CODING_AGENT_DIR="$HOME/.pi/agent" node pi/tests/mcp-fixture.mjs --live
 
 [Prompt snippets](https://github.com/amosblomqvist/pi-config/tree/main/extensions/prompt-snippets)
 provides `/snippets` and Alt+S. Select rules for the next message; toggles reset
-after sending. The extension's bundled snippet files are included, not skills.
-Add portable custom snippets under
-`pi/agent/extensions/prompt-snippets/snippets/` and rerun setup. Do not edit the
-deployed copies or downloaded upstream sources.
+after sending. All seven snippet sources live together in
+`pi/agent/extensions/prompt-snippets/snippets/`. This repo owns their contents;
+setup does not copy snippets from downloaded upstream sources. The six original
+snippets were imported from the pinned pi-config package alongside our KISS snippet.
+Edit or add snippets in that directory and rerun `./init.sh --pi`. Do not edit
+the deployed copies. The extension code itself still comes from pinned upstream.
 
 ### Web fetch and search
 

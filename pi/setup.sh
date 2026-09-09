@@ -94,8 +94,6 @@ done
 bash "$repo/pi/search-auth.sh" "$agent"
 bash "$repo/pi/mcp-import.sh" "$agent"
 bash "$repo/pi/credential-prompts.sh" "$agent"
-mkdir -p "$agent/extensions/prompt-snippets/snippets"
-cp "$repo/pi/upstream/pi-config-$config_ref/extensions/prompt-snippets/snippets/"*.md "$agent/extensions/prompt-snippets/snippets/"
 mv "$stage/settings.json" "$agent/settings.json"
 # Only repository-owned paths are overwritten; never remove private state.
 while IFS= read -r -d '' source; do

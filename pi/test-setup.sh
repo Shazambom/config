@@ -57,6 +57,9 @@ cmp -s "$agent/auth.json" "$test_dir/auth.expected" || fail 'Private auth overwr
 for extension in browser prompt-snippets web-fetch web-search; do
   [[ -f "$agent/extensions/$extension/index.ts" && -L "$agent/extensions/$extension/node_modules" ]] || fail "Missing $extension deployment"
 done
+for source in "$repo/pi/agent/extensions/prompt-snippets/snippets/"*.md; do
+  cmp -s "$source" "$agent/extensions/prompt-snippets/snippets/${source##*/}" || fail 'Repository snippet not deployed'
+done
 jq -e 'has("subagents") | not' "$agent/settings.json" >/dev/null || fail 'Legacy subagent settings'
 jq -e '. as $s | .["observational-memory"].models | all(.[]; .provider == $s.defaultProvider and .id == $s.defaultModel)' "$agent/settings.json" >/dev/null || fail 'Memory model drift'
 jq -e '.["observational-memory"].enabled == true' "$agent/settings.json" >/dev/null || fail 'Memory default disabled'
