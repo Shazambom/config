@@ -16,8 +16,9 @@ const agentDir = process.env.PI_CODING_AGENT_DIR;
 const loader = new DefaultResourceLoader({ cwd: process.cwd(), agentDir });
 await loader.reload();
 assert.deepEqual(loader.getExtensions().errors, []);
-assert.equal(loader.getExtensions().extensions.length, 7);
-assert.equal(loader.getSkills().skills.length, 0);
+assert.equal(loader.getExtensions().extensions.length, 8);
+assert(loader.getSkills().skills.some(skill => skill.name === 'grafana-logs'));
+assert(loader.getSkills().skills.some(skill => skill.name === 'how'));
 const runtime = await ModelRuntime.create({ agentDir, allowModelNetwork: false });
 const sessionManager = SessionManager.create(process.cwd());
 const { session } = await createAgentSession({

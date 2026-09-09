@@ -1,9 +1,12 @@
 # Portable Pi
 
 Global Claude commands are loaded as Pi prompt templates (`/bro`, etc.).
-Global Claude skills are loaded natively (`/skill:how`, etc.). Read the full
-skill before following it; resolve its references and scripts relative to
-its original directory under ~/.claude/skills, not the current project.
+Global Claude skills and trusted project `.claude/skills` are loaded natively
+(`/skill:how`, etc.). Read the full skill before following it; resolve references
+and scripts relative to the directory containing its loaded SKILL.md.
+Setup seeds missing global Claude commands and skills from this repo's `claude/`
+bundle without overwriting existing entries. Project skill discovery walks from
+cwd up to the nearest repository root. Same-name skills keep Pi's first match.
 
 ## Cross-harness compatibility
 

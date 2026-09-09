@@ -2,6 +2,7 @@
 # Invoked only through init.sh --pi, after pinned Node/npm/jq bootstrap.
 set -euo pipefail
 repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+bash "$repo/claude/setup.sh"
 # Reinstall only when the lockfile changes or the executable is missing.
 if [[ ! -x "$repo/pi/node_modules/.bin/pi" ]] || ! cmp -s "$repo/pi/package-lock.json" "$repo/pi/node_modules/.portable-lock.json"; then
   npm ci --prefix "$repo/pi" --ignore-scripts --no-audit --no-fund >&2
@@ -83,6 +84,7 @@ for extension in browser prompt-snippets web-fetch web-search; do
   rm -f "$agent/extensions/$extension/node_modules"
   ln -s "$repo/pi/node_modules" "$agent/extensions/$extension/node_modules"
 done
+bash "$repo/pi/search-auth.sh" "$agent"
 mkdir -p "$agent/extensions/prompt-snippets/snippets"
 cp "$repo/pi/upstream/pi-config-$config_ref/extensions/prompt-snippets/snippets/"*.md "$agent/extensions/prompt-snippets/snippets/"
 mv "$stage/settings.json" "$agent/settings.json"

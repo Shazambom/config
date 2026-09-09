@@ -37,8 +37,10 @@ prerequisites. Sources live under `pi/`; see `pi/README.md`. Edit defaults in
 `pi/agent/`, never the deployed state under `~/.pi/agent`. Setup installs global Pi only
 if missing; existing Pi versions update independently. This repo owns custom
 configuration and plugin pins, so ordinary `pi` uses this repository's defaults.
-Claude skills/commands are read from `~/.claude`, not vendored. Keep credentials
-and sessions out of git. All future Pi config must also deploy via `init.sh`.
+Claude skills/commands are bundled under `claude/`; `claude/setup.sh` seeds
+missing entries into `~/.claude` through `init.sh --pi`, never overwriting existing
+skills or commands. Pi also discovers trusted project `.claude/skills`.
+Keep credentials and sessions out of git. All future Pi config must also deploy via `init.sh`.
 
 ## Debugging
 

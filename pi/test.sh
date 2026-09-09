@@ -10,7 +10,7 @@ case "${1:-}" in
 esac
 if [[ "$live" == false ]]; then
   mkdir -p "$HOME/.claude/commands/nested" "$HOME/.claude/skills/example/references"
-  printf '%s\n' '---' 'description: Review fixture' '---' 'Review $1 with $ARGUMENTS.' > "$HOME/.claude/commands/nested/review.md"
+  printf '%s\n' '---' 'description: Review fixture' '---' 'Review $1 with $ARGUMENTS.' > "$HOME/.claude/commands/nested/fixture-review.md"
   printf '%s\n' '---' 'name: example' 'description: Example fixture' '---' 'Read references/guide.md.' > "$HOME/.claude/skills/example/SKILL.md"
   printf '%s' 'Reference fixture' > "$HOME/.claude/skills/example/references/guide.md"
 fi
@@ -31,7 +31,7 @@ rpc() {
 }
 rpc 1 '{"id":"1","type":"get_commands"}'
 if [[ "$live" == false ]]; then
-  rpc 2 '{"id":"2","type":"steer","message":"/review \"two words\" extra"}'
+  rpc 2 '{"id":"2","type":"steer","message":"/fixture-review \"two words\" extra"}'
   rpc 3 '{"id":"3","type":"clear_queue"}'
   rpc 4 '{"id":"4","type":"steer","message":"/skill:example some context"}'
   rpc 5 '{"id":"5","type":"clear_queue"}'
@@ -47,10 +47,10 @@ jq -es --argjson live "$live" --arg home "$HOME" '
     (.; check(all(.[]; .name != $name); "Unexpected command /" + $name)) |
   if $live then
     map(select((.path // "") | startswith($home + "/.claude/"))) |
-    check((map(select(.source == "prompt")) | length == 3); "Expected 3 Claude prompts") |
-    check((map(select(.source == "skill")) | length == 11); "Expected 11 Claude skills")
+    check((map(select(.source == "prompt")) | length >= 22); "Expected bundled Claude prompts") |
+    check((map(select(.source == "skill")) | length >= 12); "Expected bundled Claude skills")
   else
-    check(any(.[]; .name == "review" and .source == "prompt"); "Missing nested /review prompt") |
+    check(any(.[]; .name == "fixture-review" and .source == "prompt"); "Missing nested /fixture-review prompt") |
     check(any(.[]; .name == "skill:example" and .path == $home + "/.claude/skills/example/SKILL.md"); "Skill source path mismatch") |
     check($responses[2].steering == ["Review two words with two words extra."]; "Quoted prompt arguments expanded incorrectly") |
     reduce ["Read references/guide.md", "some context", "skills/example"][] as $text

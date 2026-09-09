@@ -50,7 +50,13 @@ provider/account; override with `--provider` / `--model` if needed.
 
 ## Claude commands and skills
 
-Sources stay in `~/.claude`; nothing is modified or copied into git.
+`claude/skills/` and `claude/commands/` contain portable snapshots from the
+original global Claude config and `~/Scheduler/.claude`. `init.sh --pi` runs
+`claude/setup.sh` to install missing entries into `~/.claude` before Pi discovers
+them. Existing skill directories and command files, including dangling symlinks,
+are left untouched. An existing skill is skipped as a whole, not partially merged.
+Setup never reads Scheduler on subsequent runs or imports its settings/credentials.
+See [`claude/README.md`](../claude/README.md) for provenance and limitations.
 
 | Claude source | Pi invocation |
 |---|---|
@@ -61,8 +67,16 @@ Sources stay in `~/.claude`; nothing is modified or copied into git.
 | Any other valid `SKILL.md` in that tree | `/skill:<name> arguments` |
 
 Skills also appear in the model's available-skills list. References, assets,
-and scripts retain their original paths. All 3 commands and 11 current skills
-were verified through Pi's real RPC command inventory.
+and scripts resolve relative to the loaded skill directory. Global Claude skills
+are available to all Pi models, including Codex Astra. The `claude-skills.ts`
+extension also discovers `.claude/skills` from the working directory upwards,
+stopping after the nearest `.git` directory or file, or at the filesystem root.
+Project discovery requires Pi project trust and respects CLI `--no-skills`.
+The subagent deployment patch explicitly loads this resource-only extension in
+restricted children without enabling additional tools. Same-name skills follow
+Pi's first-found rule with a warning; global configured skills win over these
+extension-discovered project skills. Project-only commands are not auto-discovered;
+the bundled Scheduler commands become available through the global installation.
 
 Commands are discovered recursively at launch, including symlinked folders;
 reported discovery errors abort setup before deployment. Pi uses the filename,
@@ -74,7 +88,7 @@ the template uses placeholders. Skill arguments are appended natively.
 
 Use `/reload` after editing existing sources or adding skills. Restart the
 launcher after adding/removing command files to rebuild the file list.
-Missing Claude directories are fine: Pi starts without those resources.
+Missing Claude directories are populated from the bundle during setup.
 
 **Importing instructions is not emulating Claude Code.** Claude-specific
 frontmatter, shell preprocessing, hooks, permissions, and MCP integrations are
@@ -218,8 +232,25 @@ upstream extension API. Setup applies the patch through `init.sh --pi`.
 Setup derives both observer and consolidator models from `defaultProvider`,
 `defaultModel`, and `defaultThinkingLevel` in `pi/agent/settings.json`. A temporary
 `/model` selection does not change memory's configured model. Both roles use
-the normal Pi credentials and consume model quota when enabled. Other memory
-thresholds retain upstream defaults.
+the normal Pi credentials and consume model quota when enabled.
+
+Long-context defaults deploy through `init.sh --pi`:
+
+- `pi/agent/models.json` overrides Codex `gpt-6-astra` to 872,000 tokens and
+  direct Anthropic `claude-fable-5` / `claude-fable-5-1` to 1,000,000 tokens.
+  Unknown model IDs are ignored; other providers are unchanged. This file is
+  repository-owned, so edit it here rather than the deployed copy.
+- OM compacts at 700,000 tokens and retains approximately 40,000 recent raw tokens.
+- Pi fallback compaction reserves 128,000 tokens and retains 40,000 recent tokens.
+  It can trigger earlier when switching to a smaller-context model. Models with
+  windows at or below 128,000 need a smaller reserve in project settings.
+- Other memory thresholds and observer concurrency retain upstream defaults.
+
+These are client-side limits, not proof that an account or endpoint accepts
+requests this large. Long sessions consume more quota and may increase latency;
+Astra's published API pricing increases above 272,000 input tokens. No live
+near-limit request was used to validate these defaults. Restart Pi to load all
+settings together; `/model` alone reloads model overrides.
 
 Memory files live in `<project>/.memory/<sessionId>/`, including transient worker
 handoffs. Workers also record ordinary Pi sessions. Memory can contain private
@@ -238,10 +269,20 @@ deployed copies or downloaded upstream sources.
 ### Web fetch and search
 
 [Web search](https://github.com/amosblomqvist/pi-config/tree/main/extensions/web-search)
-provides Google Custom Search through `web_search`. It needs exported
+provides Google Custom Search through `web_search`. It uses exported
 `GOOGLE_SEARCH_API_KEY` and `GOOGLE_CSE_ID`, the Search engine ID, not an OAuth
-client ID. No client secret is needed. Credentials stay in your shell environment,
-not this repo. Search uses Google quota, not the Codex subscription.
+client ID. No client secret is needed.
+
+`init.sh --pi` also imports literal assignments from `~/.zshrc` into
+`~/.pi/agent/extensions/web-search/auth.json` when that file is absent. It accepts
+bare, single-quoted, or double-quoted values, with optional `export` and trailing
+comments. It also recognizes `GOOGLE_API_KEY` and `GOOGLE_CUSTOM_SEARCH_ENGINE_ID`.
+Setup does not source `.zshrc` or evaluate substitutions. Dynamic assignments
+must be exported into Pi's environment instead. The private auth file has mode
+`600`; setup preserves existing files. To reimport rotated credentials, remove
+that auth file and rerun setup. `CONFIG_PI_HOME` relocates this config alongside
+the other agent state. Credentials never belong in this repo.
+Search uses Google quota, not the Codex subscription.
 
 [Web fetch](https://github.com/amosblomqvist/pi-config/tree/main/extensions/web-fetch)
 provides `web_fetch`, which extracts Markdown and parses PDFs locally. It can
@@ -286,8 +327,8 @@ run automatically by `pi.sh`, but not by global `pi`).
 Credentials and sessions are preserved. Future configuration files must also
 be deployed through `init.sh`; don't hand-install into the state directory.
 
-On a new machine, clone this repo, provision your `~/.claude/commands` and
-`~/.claude/skills` through your existing private sync/backup, then run `pi.sh`
+On a new machine, clone this repo and run `pi.sh` to seed the bundled Claude
+commands and skills. Restore any additional private resources separately. Run `pi.sh`
 and log in. The Claude content is intentionally not bundled in this repo.
 Do not commit auth files or sessions. Global Pi updates independently of this
 repo. Change npm pins and regenerate the lockfile to update npm dependencies.
@@ -303,7 +344,8 @@ modified legacy files are preserved.
 ./pi/test-setup.sh        # Deployment failures, unusual paths, private state
 ./pi/test-diff.sh         # Complete diff, explicit args, parser, index preservation
 ./pi/test.sh              # Temporary HOME, nested template, args, skill paths
-./pi/test.sh --live       # Verify this machine's original 3 commands/11 skills
+./pi/test.sh --live       # Verify this machine's bundled Claude resources
+./pi/test-claude-skills.sh # Project trust, ancestor discovery and child loadout
 ./pi/test-extensions.sh   # Local scripted model, real tmux agents/browser/memory
 ./pi/test-web.sh          # Live Google search and public fetch, uses API quota
 ```

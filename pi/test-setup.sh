@@ -5,6 +5,18 @@ source "$(dirname -- "${BASH_SOURCE[0]}")/tests/common.sh"
 [[ $# == 0 ]] || fail 'Usage: pi/test-setup.sh'
 agent="$CONFIG_PI_HOME/agent"
 commands="$HOME/.claude/commands"
+for source in "$repo/claude/skills"/*; do
+  diff -r "$source" "$HOME/.claude/skills/${source##*/}" >/dev/null || fail 'Bundled skill contents differ'
+done
+for source in "$repo/claude/commands"/*.md; do
+  cmp -s "$source" "$commands/${source##*/}" || fail 'Bundled command missing'
+done
+printf '%s\n' 'Private command' > "$commands/bro.md"
+printf '%s\n' 'Private skill' > "$HOME/.claude/skills/comment/SKILL.md"
+rm "$HOME/.claude/skills/how/references/explorer-prompt.md"
+rm "$commands/debug.md"
+rm -rf "$HOME/.claude/skills/grafana-logs"
+ln -s "$test_dir/absent-skill" "$HOME/.claude/skills/grafana-logs"
 mkdir -p "$commands/nested"
 odd_name=$'quoted "command"\nname.md'
 printf '%s\n' 'Unusual filename fixture.' > "$commands/nested/$odd_name"
@@ -14,7 +26,28 @@ mkdir -p "$agent/extensions/browser/.profile" "$agent/extensions/subagent"
 printf '%s\n' 'private browser fixture' > "$agent/extensions/browser/.profile/state"
 printf '%s\n' '{"custom":true}' > "$agent/web-search.json"
 cp "$repo/pi/tests/legacy-subagent-config.json" "$agent/extensions/subagent/config.json"
+printf '%s\n' \
+  'touch "$HOME/zshrc-executed"' \
+  'export GOOGLE_SEARCH_API_KEY="fixture-key"' \
+  "export GOOGLE_CSE_ID='fixture-id' # literal credential" > "$HOME/.zshrc"
 "$repo/init.sh" --pi
+[[ "$(< "$commands/bro.md")" == 'Private command' ]] || fail 'Existing Claude command overwritten'
+[[ "$(< "$HOME/.claude/skills/comment/SKILL.md")" == 'Private skill' ]] || fail 'Existing Claude skill overwritten'
+[[ ! -e "$HOME/.claude/skills/how/references/explorer-prompt.md" ]] || fail 'Existing skill directory merged'
+[[ -L "$HOME/.claude/skills/grafana-logs" && ! -e "$test_dir/absent-skill" ]] || fail 'Existing skill symlink changed'
+cmp -s "$repo/claude/commands/debug.md" "$commands/debug.md" || fail 'Missing command not restored'
+cmp -s "$repo/pi/agent/extensions/claude-skills.ts" "$agent/extensions/claude-skills.ts" || fail 'Claude discovery extension not deployed'
+search_auth="$agent/extensions/web-search/auth.json"
+jq -e '.google_search_api_key == "fixture-key" and .google_cse_id == "fixture-id"' "$search_auth" >/dev/null || fail 'Search auth import failed'
+[[ ! -e "$HOME/zshrc-executed" ]] || fail 'Executed .zshrc'
+[[ "$(ls -l "$search_auth")" == -rw-------* ]] || fail 'Search auth permissions'
+cp "$search_auth" "$test_dir/search-auth.expected"
+printf '%s\n' 'export GOOGLE_SEARCH_API_KEY=$(touch "$HOME/expansion-executed")' 'export GOOGLE_CSE_ID=other-id' > "$HOME/.zshrc"
+bash "$repo/pi/search-auth.sh" "$agent"
+cmp -s "$search_auth" "$test_dir/search-auth.expected" || fail 'Existing search auth overwritten'
+mkdir -p "$test_dir/auth-agent"
+bash "$repo/pi/search-auth.sh" "$test_dir/auth-agent"
+[[ ! -e "$HOME/expansion-executed" && ! -e "$test_dir/auth-agent/extensions/web-search/auth.json" ]] || fail 'Accepted shell expansion as credentials'
 jq -e --arg path "$commands/nested/$odd_name" '.prompts | index($path) != null' \
   "$agent/settings.json" >/dev/null || fail 'Unusual command path changed'
 cmp -s "$agent/auth.json" "$test_dir/auth.expected" || fail 'Private auth overwritten'
@@ -27,6 +60,14 @@ done
 jq -e 'has("subagents") | not' "$agent/settings.json" >/dev/null || fail 'Legacy subagent settings'
 jq -e '. as $s | .["observational-memory"].models | all(.[]; .provider == $s.defaultProvider and .id == $s.defaultModel)' "$agent/settings.json" >/dev/null || fail 'Memory model drift'
 jq -e '.["observational-memory"].enabled == true' "$agent/settings.json" >/dev/null || fail 'Memory default disabled'
+jq -e '.["observational-memory"].compactAtContextTokens == 700000 and
+  .["observational-memory"].tailTokens == 40000 and
+  .compaction.enabled == true and .compaction.reserveTokens == 128000 and
+  .compaction.keepRecentTokens == 40000' "$agent/settings.json" >/dev/null || fail 'Long-context compaction drift'
+cmp -s "$repo/pi/agent/models.json" "$agent/models.json" || fail 'Model overrides not deployed'
+jq -e '.providers["openai-codex"].modelOverrides["gpt-6-astra"].contextWindow == 872000 and
+  .providers.anthropic.modelOverrides["claude-fable-5"].contextWindow == 1000000 and
+  .providers.anthropic.modelOverrides["claude-fable-5-1"].contextWindow == 1000000' "$agent/models.json" >/dev/null || fail 'Long-context model drift'
 cp "$agent/settings.json" "$test_dir/settings.expected"
 
 expect_setup_failure() {

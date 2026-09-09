@@ -1,8 +1,13 @@
 --- a/pi-extension/subagents/index.ts
 +++ b/pi-extension/subagents/index.ts
-@@ -1318,1 +1318,1 @@
+@@ -865,0 +866,4 @@
++    const skillDiscovery = join(loadout.agentDir ?? getAgentConfigDir(), "extensions", "claude-skills.ts");
++    if (existsSync(skillDiscovery)) {
++      parts.push("-e", shellEscape(skillDiscovery));
++    }
+@@ -1318,1 +1322,1 @@
 -  const parts: string[] = ["pi"];
 +  const parts: string[] = [shellEscape(process.execPath), shellEscape(resolve(process.argv[1]))];
-@@ -2156,1 +2156,1 @@
+@@ -2156,1 +2160,1 @@
 -        const parts = ["pi", "--session", shellEscape(sessionPath)];
 +        const parts = [shellEscape(process.execPath), shellEscape(resolve(process.argv[1])), "--session", shellEscape(sessionPath)];
