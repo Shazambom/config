@@ -160,6 +160,7 @@ this package to an existing session; then use:
 ```text
 /diff                      # Branch + working-tree changes, including untracked files
 /diff HEAD                 # Staged + unstaged tracked changes against HEAD
+/diff h                    # Shortcut for /diff HEAD, also excludes untracked files
 /diff --                   # Unstaged tracked changes only
 /diff --cached             # Staged changes only
 /view path/to/new-file.go  # Inspect a new/untracked file

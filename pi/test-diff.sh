@@ -66,6 +66,11 @@ grep -q 'cannot safely annotate' "$test_dir/control-path.log"
 rm $'line\nbreak.txt'
 diff_json --turn-based > "$test_dir/turn.json"
 jq -e '.source.turnBased and .source.everything' "$test_dir/turn.json" >/dev/null
+diff_json HEAD > "$test_dir/head.json"
+for alias in h ' h '; do
+  diff_json "$alias" > "$test_dir/alias.json"
+  cmp "$test_dir/head.json" "$test_dir/alias.json" || fail '/diff h differs from /diff HEAD'
+done
 for args in '--cached' 'HEAD' 'main...HEAD' '--' 'HEAD -- @tracked'; do
   diff_json "$args" > "$test_dir/explicit.json"
   jq -e '.source.everything != true' "$test_dir/explicit.json" >/dev/null

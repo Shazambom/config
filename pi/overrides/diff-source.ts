@@ -11,7 +11,7 @@ export { DIFF_MAX_BUFFER_BYTES };
 type PortableSource = DiffSource & { everything?: boolean };
 
 export function parseDiffSource(args: string): PortableSource {
-  const source: PortableSource = parseUpstream(args);
+  const source: PortableSource = parseUpstream(args.trim() === "h" ? "HEAD" : args);
   if (source.args.length === 0) {
     source.everything = true;
     source.label = "all changes";
