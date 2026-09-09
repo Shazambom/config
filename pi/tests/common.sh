@@ -30,6 +30,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+export CONFIG_PI_NO_PROMPT=1
 export CONFIG_PI_HOME="$test_dir/state"
 export HOME="$test_dir/home"
 mkdir -p "$HOME" "$CONFIG_PI_HOME/agent" "$test_dir/project"

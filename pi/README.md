@@ -139,8 +139,8 @@ Missing Claude directories are populated from the bundle during setup.
 **Importing instructions is not emulating Claude Code.** Claude-specific
 frontmatter, shell preprocessing, hooks, permissions, and MCP integrations are
 not emulated. `how` can map scout/oracle/reviewer intent to the installed Pi
-subagent API; `why` can use public web research, but private MCP sources remain
-unavailable. Workers can write code; give concurrent writers separate worktrees
+subagent API; `why` can use public web research and the configured Grafana MCP
+proxy. Other private MCP sources remain unavailable unless explicitly configured. Workers can write code; give concurrent writers separate worktrees
 or exclusive files. The subagent extension does not isolate worktrees for you.
 Multi-model workflows still require those models and their authentication;
 same-model children are not substitutes for independent model families.
@@ -304,6 +304,81 @@ handoffs. Workers also record ordinary Pi sessions. Memory can contain private
 conversation data; keep `.memory/` out of commits in every project where used.
 Topic files do not roll back with `/tree` even though the observation ledger does.
 
+### Missing credentials
+
+Interactive setup prompts for missing values after the normal credential imports.
+Each prompt names the exact variable, gives a short description and links to the
+provider. Input is hidden, including URLs and IDs; Enter skips a value.
+
+| Variable | Where to find it |
+|---|---|
+| `GOOGLE_SEARCH_API_KEY` | [Google Cloud API credentials](https://console.cloud.google.com/apis/credentials) |
+| `GOOGLE_CSE_ID` | [Programmable Search control panel](https://programmablesearchengine.google.com/controlpanel/all) |
+| `GRAFANA_URL` | [Grafana Cloud organization/stacks](https://grafana.com/profile/org) |
+| `GRAFANA_SERVICE_ACCOUNT_TOKEN` | [Grafana service accounts](https://grafana.com/docs/grafana/latest/administration/service-accounts/) |
+
+The prompt helper checks the environment and private Pi config, and reads literal
+Google assignments from `.zshrc` to recover partially configured search credentials.
+It never sources or edits `.zshrc`. Existing values are not replaced; a complete
+pair is required before saving new values. Saved files are mode 600 in the private
+Pi agent directory, never this repository. Enter-skipped values are asked again on
+the next interactive setup. New Grafana configs use a pinned Docker image digest;
+imported configs retain their image. Custom HTTP/command Grafana configurations and
+symlinked credential files are left alone rather than guessing their requirements.
+
+Use `CONFIG_PI_NO_PROMPT=1 ./init.sh --pi` to suppress prompts. Setup without terminal
+stdin/stderr never prompts, and `pi.sh` suppresses prompts for print/RPC/help/version
+and model-listing invocations. Existing noninteractive imports still run. Pi model
+sign-in remains `/login`; OAuth is not replaced with a raw credential prompt.
+
+### Grafana MCP
+
+Setup installs the pinned `pi-mcp-adapter` dependency and loads
+`pi/overrides/grafana-mcp.ts`. This small TypeScript wrapper uses the adapter's
+extension API with an isolated snapshot of `<Pi agent dir>/mcp.json`. It does not
+automatically adopt project `.mcp.json` files or other hosts' servers. The default
+agent dir is `~/.pi/agent`; `CONFIG_PI_HOME` relocates deployment as usual.
+
+`pi/mcp-import.sh`, called by `init.sh --pi`, imports only the global
+`mcpServers.grafana` Docker definition from `~/.claude.json` when Pi has no Grafana
+entry. It never writes Claude's config. Existing Pi servers/settings are preserved,
+and existing Grafana entries or a symlinked `mcp.json` are left untouched. Missing
+Claude/Grafana config is allowed. The importer moves Docker `-e KEY=value` pairs
+into explicit environment variables and sets `literalEnv: true`, preventing secret
+values from being interpreted as adapter commands. The private file has mode 600;
+credentials are never bundled in this repository. Remove only the private Grafana
+entry and rerun init to reimport rotated credentials.
+
+Docker must already be installed and running, as required by the existing Claude
+configuration. Setup does not install Docker or pull/update the configured image;
+Docker may pull it when the server first connects. Grafana is lazy and proxy-only,
+so startup does not connect and its entire tool catalog stays out of the prompt.
+MCP scripting and model sampling default off. Restricted subagents do not gain MCP
+access automatically. Tools retain the imported account's permissions; this setup
+does not make a writable account read-only.
+
+Restart Pi after setup. Use `/mcp status`, `/mcp tools`, or
+`/mcp reconnect grafana` to inspect/connect. The agent can call:
+
+```text
+mcp({ connect: "grafana" })
+mcp({ search: "loki", server: "grafana" })
+mcp({ describe: "grafana_query_loki_logs" })
+```
+
+Use the returned schema to make a tool call. The existing `/skill:grafana-logs`
+provides query guidance. The wrapper intentionally uses programmatic config, so
+adapter setup/write commands are limited; manage servers in the private global
+file and reload Pi. Do not put credentials or cached private MCP output in Git.
+
+Verification uses a local fake stdio server by default. An explicit live check
+connects and lists Loki datasources, without querying logs or modifying Grafana:
+
+```bash
+./pi/test-mcp.sh
+PI_CODING_AGENT_DIR="$HOME/.pi/agent" node pi/tests/mcp-fixture.mjs --live
+```
+
 ### Prompt snippets
 
 [Prompt snippets](https://github.com/amosblomqvist/pi-config/tree/main/extensions/prompt-snippets)
@@ -389,6 +464,8 @@ modified legacy files are preserved.
 ```bash
 ./init.sh --pi
 ./pi/test-setup.sh        # Deployment failures, unusual paths, private state
+./pi/test-mcp.sh          # Private Grafana import and fake stdio MCP round-trip
+./pi/test-credential-prompts.sh # Real-terminal hidden input, partial config and skips
 ./pi/test-diff.sh         # Complete diff, explicit args, parser, index preservation
 ./pi/test.sh              # Temporary HOME, nested template, args, skill paths
 ./pi/test.sh --live       # Verify this machine's bundled Claude resources

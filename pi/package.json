@@ -7,6 +7,7 @@
   "dependencies": {
     "@earendil-works/pi-coding-agent": "0.85.1",
     "pi-diff-review": "0.1.26",
+    "pi-mcp-adapter": "2.32.1",
     "@sinclair/typebox": "0.34.49",
     "@mozilla/readability": "0.6.0",
     "linkedom": "0.16.11",

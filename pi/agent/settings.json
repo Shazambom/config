@@ -20,6 +20,7 @@
   "packages": [
     { "source": "../upstream/pi-interactive-subagents", "skills": [], "prompts": [], "themes": [] },
     { "source": "../upstream/pi-observational-memory", "skills": [], "prompts": [], "themes": [] },
-    "../node_modules/pi-diff-review"
+    "../node_modules/pi-diff-review",
+    { "source": "../overrides/grafana-mcp.ts", "skills": [], "prompts": [], "themes": [] }
   ]
 }

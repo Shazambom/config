@@ -92,6 +92,8 @@ for extension in browser prompt-snippets web-fetch web-search; do
   ln -s "$repo/pi/node_modules" "$agent/extensions/$extension/node_modules"
 done
 bash "$repo/pi/search-auth.sh" "$agent"
+bash "$repo/pi/mcp-import.sh" "$agent"
+bash "$repo/pi/credential-prompts.sh" "$agent"
 mkdir -p "$agent/extensions/prompt-snippets/snippets"
 cp "$repo/pi/upstream/pi-config-$config_ref/extensions/prompt-snippets/snippets/"*.md "$agent/extensions/prompt-snippets/snippets/"
 mv "$stage/settings.json" "$agent/settings.json"

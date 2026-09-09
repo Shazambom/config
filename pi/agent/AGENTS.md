@@ -40,8 +40,10 @@ multiple independent model families requested by a skill.
 
 Claude Task instructions can map to these roles where capabilities match.
 For how, pass the relevant reference prompts to scout/oracle/reviewer. For why,
-use public research and available local evidence; mark private MCP sources
-unavailable. No upstream skills are installed. Never fabricate reviews, source
+use available public, local, and MCP evidence; mark sources unavailable only when
+their tools are absent or access fails. Grafana is available through the `mcp`
+proxy in the main Pi session: connect to `grafana`, then search/describe its tools
+before calling them. Restricted subagents do not automatically receive `mcp`. No upstream skills are installed. Never fabricate reviews, source
 coverage, tests, or execution.
 
 ## Browser and memory

@@ -16,7 +16,7 @@ const agentDir = process.env.PI_CODING_AGENT_DIR;
 const loader = new DefaultResourceLoader({ cwd: process.cwd(), agentDir });
 await loader.reload();
 assert.deepEqual(loader.getExtensions().errors, []);
-assert.equal(loader.getExtensions().extensions.length, 9);
+assert.equal(loader.getExtensions().extensions.length, 10);
 assert(loader.getSkills().skills.some(skill => skill.name === 'grafana-logs'));
 assert(loader.getSkills().skills.some(skill => skill.name === 'how'));
 const runtime = await ModelRuntime.create({ agentDir, allowModelNetwork: false });
@@ -36,7 +36,7 @@ const call = async (name, args = {}) => {
 };
 try {
   const names = session.getAllTools().map(t => t.name);
-  for (const name of ['subagent', 'subagent_message', 'subagents_list', 'web_search', 'web_fetch', 'browser_goto']) assert(names.includes(name));
+  for (const name of ['subagent', 'subagent_message', 'subagents_list', 'web_search', 'web_fetch', 'browser_goto', 'mcp']) assert(names.includes(name));
   for (const name of ['fetch_content', 'source_check', 'get_search_content', 'bg_wait']) assert(!names.includes(name));
   assert(!session.agent.state.tools.some(t => t.name.startsWith('browser_')));
   await session.prompt('/om on');
