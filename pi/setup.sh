@@ -67,6 +67,13 @@ if [[ "$upstream" != "$diff_dir/source-upstream.ts" ]]; then
 fi
 cp "$repo/pi/overrides/diff-source.ts" "$diff_dir/source.ts.portable"
 mv "$diff_dir/source.ts.portable" "$diff_dir/source.ts"
+review_dir="$repo/pi/node_modules/pi-diff-review/src/review"
+if [[ ! -f "$review_dir/component-upstream.ts" ]]; then
+  cp "$review_dir/component.ts" "$review_dir/component-upstream.ts"
+fi
+cp "$review_dir/component-upstream.ts" "$stage/component.ts"
+(cd "$stage"; git apply "$repo/pi/patches/diff-review-colors.patch")
+mv "$stage/component.ts" "$review_dir/component.ts"
 config_ref="$(jq -r '.[] | select(.name == "pi-config") | .ref' "$repo/pi/upstream.json")"
 mkdir -p "$agent/extensions"
 for extension in browser prompt-snippets web-fetch web-search; do

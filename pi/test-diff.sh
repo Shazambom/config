@@ -2,6 +2,7 @@
 set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/tests/common.sh"
 [[ $# == 0 ]] || fail 'Usage: pi/test-diff.sh'
+PI_CODING_AGENT_DIR="$CONFIG_PI_HOME/agent" node "$repo/pi/tests/diff-colors-fixture.mjs"
 export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
 export GIT_AUTHOR_NAME=Test GIT_AUTHOR_EMAIL=test@example.invalid
 export GIT_COMMITTER_NAME=Test GIT_COMMITTER_EMAIL=test@example.invalid

@@ -50,24 +50,47 @@ provider/account; override with `--provider` / `--model` if needed.
 
 ## Appearance
 
-The default `vim-darcula` theme uses the palette from `doums/darcula`, selected
+The default is `jetbrains-dark`, with charcoal panels and blue selections.
+Diff additions use pale-green text and markers (`#AFF5B4`) on dark green (`#033A16`).
+Deletions use `#FFDCD7` text on `#67060C`,
+the deletion pair in [highlight.js's GitHub Dark palette](https://github.com/highlightjs/highlight.js/blob/main/src/styles/github-dark.css).
+`pi/patches/diff-review-colors.patch` colors added and removed code with their
+respective diff foregrounds instead of ordinary syntax colors, and adds explicit
+`−` / `+` line markers. Box-drawing and block-element characters in source text
+appear as `\uXXXX` escapes so solid glyphs cannot look like obscured string values.
+This changes only the review display, not files or comment excerpts; search still
+matches source text and maps matches to the escaped display. Reviewed rows use
+a green (`#26442E`) overlay.
+Search-match styling, comment markers, selection and reviewed-row backgrounds
+still take precedence. The patch deploys through setup; restart Pi after changing
+it so the diff extension loads the new renderer. Pi's diff viewer shares these backgrounds with successful
+and failed tool panels, so those panels have the same subtle tints.
+The alternative `vim-darcula` theme uses the palette from `doums/darcula`, selected
 by `colorscheme darcula` in `init.vim`: `#2B2B2B` editor background, `#A9B7C6`
 text, orange keywords, yellow functions, green strings, and blue numbers.
 The palette is bundled here so Pi-only setup does not require Neovim plugins.
 Vim's separate `PaperColor_light` statusline is not used for Pi's palette.
 
-Pending, successful, and failed tool panels share the neutral editor background;
-errors still have red status text. Diff additions use green markers and deletions
-use gray, reflecting Darcula's gray deletions rather than red panels. Pi's limited
+In `vim-darcula`, tool panels share the neutral editor background; errors still
+have red status text. Diff additions use green markers and deletions use gray,
+without distinct line backgrounds. Pi's limited
 color tokens do not reproduce Vim's per-line diff backgrounds or full syntax groups.
 The terminal's base background is unchanged; use `#2B2B2B` there for a full match.
-The `jetbrains-dark` theme remains available as an alternative.
+Both themes are available under `/settings` → Theme.
 
 Select it under `/settings` → Theme after setup, or restart Pi. Edit
-`pi/agent/themes/vim-darcula.json` and rerun `./init.sh --pi` to tune it.
+`pi/agent/themes/jetbrains-dark.json` and rerun `./init.sh --pi` to tune the default.
 The active custom theme hot-reloads when its deployed file changes. Set the
 portable default in `pi/agent/settings.json`; setup resets choices saved only
 through `/settings`.
+
+The `mascot.ts` extension replaces the startup header with a theme-colored Pi
+mascot. It reveals over one second and blinks every four seconds until terminal
+input stops the animation without consuming the input. `/mascot` replays it;
+`/mascot off` restores the standard header for the current session. Reload/startup
+shows it again. Timers stop on input, header disposal, reload, and shutdown.
+RPC, print mode, subagents, and OM workers do not display the mascot. TypeScript
+is used because this is a Pi TUI extension, not a standalone setup script.
 
 ## Claude commands and skills
 

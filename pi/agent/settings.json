@@ -2,7 +2,7 @@
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-6-astra",
   "defaultThinkingLevel": "medium",
-  "theme": "vim-darcula",
+  "theme": "jetbrains-dark",
   "enableInstallTelemetry": false,
   "enableSkillCommands": true,
   "skills": ["~/.claude/skills"],
