@@ -26,6 +26,7 @@ for extension in browser prompt-snippets web-fetch web-search; do
 done
 jq -e 'has("subagents") | not' "$agent/settings.json" >/dev/null || fail 'Legacy subagent settings'
 jq -e '. as $s | .["observational-memory"].models | all(.[]; .provider == $s.defaultProvider and .id == $s.defaultModel)' "$agent/settings.json" >/dev/null || fail 'Memory model drift'
+jq -e '.["observational-memory"].enabled == true' "$agent/settings.json" >/dev/null || fail 'Memory default disabled'
 cp "$agent/settings.json" "$test_dir/settings.expected"
 
 expect_setup_failure() {

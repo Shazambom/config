@@ -205,9 +205,15 @@ can contain cookies and credentials. Network header output can expose secrets.
 ### Observational memory
 
 [pi-observational-memory](https://github.com/amosblomqvist/pi-observational-memory)
-starts disabled. `/om on` enables background observers, consolidation, and
-compaction for the session; `/om off` disables it. `/om:status`, `/om:compact`,
-and `/om:consolidate` inspect or trigger work.
+starts enabled for sessions without a saved on/off choice. Background observers,
+consolidation, and compaction run automatically. `/om off` disables memory for
+the session; `/om on` re-enables it. Saved choices survive restart and reload.
+`/om:status`, `/om:compact`, and `/om:consolidate` inspect or trigger work.
+
+`pi/agent/settings.json` sets `observational-memory.enabled` to `true`.
+`pi/patches/observational-memory.patch` adds this startup fallback to the pinned
+extension while preserving saved session choices. TypeScript is required by the
+upstream extension API. Setup applies the patch through `init.sh --pi`.
 
 Setup derives both observer and consolidator models from `defaultProvider`,
 `defaultModel`, and `defaultThinkingLevel` in `pi/agent/settings.json`. A temporary

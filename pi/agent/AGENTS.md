@@ -48,7 +48,8 @@ closes the browser and disables its tools. Use the browser for live application
 testing. Its separate persistent profile can contain login credentials; never
 commit it or print secrets captured from network traffic.
 
-/om on enables observational memory for the session. Observers and the
+Observational memory is on by default; /om off disables it for the session,
+and /om on re-enables it. Saved session choices survive restarts. Observers and the
 consolidator run in background Pi processes using the configured default model.
 Memory lives under the project's .memory/ directory and can contain private
 conversation data. Keep it out of commits. /om off disables memory triggers.

@@ -1,0 +1,21 @@
+diff --git a/src/config.ts b/src/config.ts
+--- a/src/config.ts
++++ b/src/config.ts
+@@ -12,0 +13 @@ export interface Config {
++	enabled: boolean;
+@@ -49,0 +51 @@ export const DEFAULTS: Config = {
++	enabled: false,
+@@ -99,0 +102 @@ function normalizeSettingsConfig(value: Record<string, unknown>, base: Config): Partial<Config> {
++	if (typeof value.enabled === "boolean") normalized.enabled = value.enabled;
+diff --git a/src/index.ts b/src/index.ts
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -24 +24 @@
+-function readGateFromLedger(branch: Entry[]): boolean {
++function readGateFromLedger(branch: Entry[], defaultEnabled: boolean): boolean {
+@@ -31 +31 @@
+-	return false;
++	return defaultEnabled;
+@@ -49 +49 @@
+-		runtime.enabled = readGateFromLedger(branch);
++		runtime.enabled = readGateFromLedger(branch, runtime.config.enabled);

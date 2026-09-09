@@ -38,7 +38,10 @@ try {
   for (const name of ['subagent', 'subagent_message', 'subagents_list', 'web_search', 'web_fetch', 'browser_goto']) assert(names.includes(name));
   for (const name of ['fetch_content', 'source_check', 'get_search_content', 'bg_wait']) assert(!names.includes(name));
   assert(!session.agent.state.tools.some(t => t.name.startsWith('browser_')));
-  assert(!existsSync('.memory'));
+  await session.prompt('/om on');
+  assert(!sessionManager.getBranch().some(e => e.customType === 'om.enabled'), 'Default-on must make /om on a no-op');
+  await session.prompt('/om off');
+  assert.equal(sessionManager.getBranch().filter(e => e.customType === 'om.enabled').at(-1).data.enabled, false);
   const agents = await call('subagents_list');
   const profiles = agents.details.agents;
   assert.deepEqual(profiles.map(a => a.name).sort(), ['oracle', 'researcher', 'reviewer', 'scout', 'worker']);
@@ -65,6 +68,10 @@ try {
   assert(sessionManager.getBranch().some(e => e.customType === 'om.enabled' && e.data.enabled));
   await session.prompt('/om off');
   assert.equal(sessionManager.getBranch().filter(e => e.customType === 'om.enabled').at(-1).data.enabled, false);
+  await session.extensionRunner.emit({ type: 'session_start', reason: 'reload' });
+  const offEntry = sessionManager.getBranch().filter(e => e.customType === 'om.enabled').at(-1);
+  await session.prompt('/om off');
+  assert.equal(sessionManager.getBranch().filter(e => e.customType === 'om.enabled').at(-1).id, offEntry.id);
 
   await session.prompt('Initialize fixture');
   const completion = name => new Promise(resolve => {

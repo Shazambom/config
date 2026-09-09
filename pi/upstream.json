@@ -16,6 +16,7 @@
     "name": "pi-observational-memory",
     "ref": "78a1efcfdd46332253fb289724f05b26dfc7769e",
     "sha256": "dc9e07f06138903da789dbbcff18f11b6bd02ba35dc562ef7a59a83fad4387b7",
+    "patch": "observational-memory.patch",
     "paths": ["LICENSE", "README.md", "package.json", "src", "agent"]
   }
 ]
