@@ -76,8 +76,8 @@ for theme in vim-darcula jetbrains-dark; do
   ' "$agent/themes/$theme.json" >/dev/null || fail 'Theme colors invalid'
 done
 jq -e '. as $theme | [.colors.toolPendingBg, .colors.toolSuccessBg, .colors.toolErrorBg] |
-  map(. as $color | $theme.vars[$color] // $color) | unique | length == 3' \
-  "$agent/themes/jetbrains-dark.json" >/dev/null || fail 'Diff backgrounds indistinguishable'
+  map(. as $color | $theme.vars[$color] // $color) | unique | . == ["#1E1F22"]' \
+  "$agent/themes/jetbrains-dark.json" >/dev/null || fail 'Live tool panels must remain charcoal'
 cmp -s "$repo/pi/agent/extensions/mascot.ts" "$agent/extensions/mascot.ts" || fail 'Mascot not deployed'
 node "$repo/pi/tests/mascot-fixture.mjs"
 jq -e '.vars.editor == "#2B2B2B" and .vars.text == "#A9B7C6" and

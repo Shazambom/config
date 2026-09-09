@@ -63,8 +63,10 @@ matches source text and maps matches to the escaped display. Reviewed rows use
 a green (`#26442E`) overlay.
 Search-match styling, comment markers, selection and reviewed-row backgrounds
 still take precedence. The patch deploys through setup; restart Pi after changing
-it so the diff extension loads the new renderer. Pi's diff viewer shares these backgrounds with successful
-and failed tool panels, so those panels have the same subtle tints.
+it so the diff extension loads the new renderer. For `jetbrains-dark`, this patch
+sets green/red backgrounds only inside `/diff`. Scrolling tool panels use neutral
+charcoal (`#1E1F22`) for pending, successful, and failed operations. Other themes
+retain their own tool-background colors in the diff viewer.
 The alternative `vim-darcula` theme uses the palette from `doums/darcula`, selected
 by `colorscheme darcula` in `init.vim`: `#2B2B2B` editor background, `#A9B7C6`
 text, orange keywords, yellow functions, green strings, and blue numbers.

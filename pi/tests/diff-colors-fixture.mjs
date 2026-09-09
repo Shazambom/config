@@ -30,13 +30,14 @@ assert.equal(component.getRenderedDiffContent(added, addedIndex),
   theme.fg('toolDiffAdded', component.getDisplayText(added)));
 assert(component.applyReviewedBackground('reviewed', 60).startsWith('\x1b[48;2;38;68;46m'));
 assert.equal(theme.getFgAnsi('toolDiffAdded'), '\x1b[38;2;175;245;180m');
-assert.equal(theme.getBgAnsi('toolSuccessBg'), '\x1b[48;2;3;58;22m');
+assert.equal(theme.getBgAnsi('toolSuccessBg'), theme.getBgAnsi('toolPendingBg'));
+assert(component.applyDiffBackground(added, 'added', 60).startsWith('\x1b[48;2;3;58;22m'));
 assert.equal(theme.getFgAnsi('toolDiffRemoved'), '\x1b[38;2;255;220;215m');
-assert.equal(theme.getBgAnsi('toolErrorBg'), '\x1b[48;2;103;6;12m');
+assert.equal(theme.getBgAnsi('toolErrorBg'), theme.getBgAnsi('toolPendingBg'));
 const barIndex = lines.findIndex(line => line.kind === 'add' && line.text.includes('.repeat(14)'));
 assert(barIndex >= 0);
 assert.equal(component.getRenderedDiffContent(lines[barIndex], barIndex), theme.fg('toolDiffAdded', mascotBar));
-const redBackground = theme.getBgAnsi('toolErrorBg');
+const redBackground = '\x1b[48;2;103;6;12m';
 assert.notEqual(redBackground, theme.getBgAnsi('toolPendingBg'));
 assert(component.applyDiffBackground(removed, text, 60).startsWith(redBackground));
 for (const width of [60, 180]) {

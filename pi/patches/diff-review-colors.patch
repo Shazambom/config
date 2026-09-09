@@ -35,7 +35,21 @@
    }
  
    private applyDiffBackground(
-@@ -1904,7 +1908,7 @@
+@@ -1896,15 +1900,19 @@
+     const padded = padToWidth(styled, width);
+     if (line.kind === "add") {
+-      return this.theme.bg("toolSuccessBg", padded);
++      return this.theme.name === "jetbrains-dark"
++        ? `\x1b[48;2;3;58;22m${padded}\x1b[49m`
++        : this.theme.bg("toolSuccessBg", padded);
+     }
+     if (line.kind === "remove") {
+-      return this.theme.bg("toolErrorBg", padded);
++      return this.theme.name === "jetbrains-dark"
++        ? `\x1b[48;2;103;6;12m${padded}\x1b[49m`
++        : this.theme.bg("toolErrorBg", padded);
+     }
+     return styled;
    }
  
    private applyReviewedBackground(styled: string, width: number): string {
@@ -44,7 +58,7 @@
    }
  
    private renderDiffRowContent(
-@@ -1960,11 +1964,15 @@
+@@ -1960,11 +1968,15 @@
      if (matches.length === 0) return undefined;
  
      const activeMatch = this.search.getActiveMatch();
@@ -62,7 +76,7 @@
        const isActive =
          activeMatch?.lineIndex === match.lineIndex &&
          activeMatch.start === match.start &&
-@@ -1972,7 +1980,7 @@
+@@ -1972,7 +1984,7 @@
        result += isActive
          ? this.theme.bg("selectedBg", this.theme.fg("warning", text))
          : this.theme.bg("selectedBg", this.theme.fg("accent", text));
@@ -71,7 +85,7 @@
      }
      result += code.slice(cursor);
      return result;
-@@ -2009,6 +2017,11 @@
+@@ -2009,6 +2021,11 @@
    }
  }
  
