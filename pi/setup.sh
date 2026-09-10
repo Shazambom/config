@@ -107,3 +107,6 @@ for entry in \
   if command -v sha256sum >/dev/null; then hash="$(sha256sum "$path")"; else hash="$(shasum -a 256 "$path")"; fi
   [[ "${hash%% *}" != "${entry#*:}" ]] || rm "$path"
 done
+if [[ -z "${CONFIG_PI_HOME:-}" ]]; then
+  bash "$repo/pi/install-command.sh" "$CONFIG_PI_COMMAND_PATH"
+fi

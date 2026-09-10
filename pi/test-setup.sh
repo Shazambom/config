@@ -117,9 +117,14 @@ export PI_TEST_FAIL_DIR="$repo/pi/agent"
 expect_setup_failure 'resource discovery failure'
 # A globally available Pi must not cause npm inspection, upgrade or downgrade.
 unset PI_TEST_FAIL_DIR
-printf '#!/usr/bin/env bash\nexit 0\n' > "$test_dir/bin/pi"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$test_dir/bin/pi-cli"
+chmod +x "$test_dir/bin/pi-cli"
+ln -s pi-cli "$test_dir/bin/pi"
 printf '#!/usr/bin/env bash\necho "Unexpected global npm call" >&2\nexit 99\n' > "$test_dir/bin/npm"
 chmod +x "$test_dir/bin/pi" "$test_dir/bin/npm"
 (unset CONFIG_PI_HOME; "$repo/init.sh" --pi)
 jq -e '.packages | length > 0' "$HOME/.pi/agent/settings.json" >/dev/null || fail 'Standard global config missing'
-printf '%s\n' 'PASS: deployment validation, private-state preservation, standard config and existing global Pi left alone.'
+source "$repo/pi/command-path.sh"
+pi_is_launcher "$test_dir/bin/pi" || fail 'Plain pi launcher not installed'
+[[ "$(pi_real_command "$test_dir/bin/pi")" == "$(cd "$test_dir/bin" && pwd -P)/pi-cli" ]] || fail 'Global CLI target changed'
+printf '%s\n' 'PASS: deployment validation, private-state preservation, standard config and executable launcher installation.'

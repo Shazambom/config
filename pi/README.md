@@ -2,8 +2,9 @@
 
 Run `/path/to/config/init.sh --pi` to deploy this repo's defaults to the
 standard `~/.pi/agent` directory and install global Pi if it is missing.
-Existing Pi installations are left alone and can update independently.
-Then run `pi` from any project directory.
+The underlying Pi package can update independently. Setup installs an executable
+wrapper at the existing `pi` command path, so plain `pi` runs this repo's `pi.sh`
+from any shell. No aliases, functions, or shell startup changes are needed.
 Rerun setup after changing repository defaults. Restart Pi or use `/reload`
 to pick up deployed extensions.
 
@@ -246,8 +247,9 @@ calls can launch in parallel. There is no workflowScript API or installed
 subagent skill. Workers need exclusive files or separate worktrees. They do
 not get automatic Git isolation or a filesystem security sandbox.
 
-Plain `pi` must also run inside tmux to spawn agents. Use `tmux new -s pi 'pi'`
-or the auto-tmux `pi.sh` launcher. `Ctrl+b d` detaches; `tmux attach` returns.
+Plain `pi` uses the auto-tmux `pi.sh` launcher. Interactive launches outside
+tmux create a session; launches inside tmux reuse the current pane. Print/RPC,
+help, version, and model-listing invocations bypass tmux. `Ctrl+b d` detaches; `tmux attach` returns.
 `pi/patches/interactive-subagents.patch` makes spawn and resume use the parent's
 Node executable and Pi entry point, independent of a new pane's shell PATH.
 
@@ -446,6 +448,16 @@ instructions. No video tools, extra extensions, or upstream skills are installed
   this also skips global Pi installation.
 - Global Pi is installed at the latest release only if missing, and is never
   upgraded or downgraded by setup. Update it normally with `pi update` or npm.
+  Setup wraps the npm-created `pi` symlink with an executable and records its
+  original CLI target in `.pi-portable-real` beside it. `pi.sh` resolves that
+  target rather than recursively invoking the wrapper. The wrapper repairs itself
+  after the launched command exits, including `pi update`. External npm updates
+  can replace the wrapper; rerun `./init.sh --pi` afterward. Switching Node/npm
+  installations also requires rerunning setup for the newly selected command.
+  The command directory must be writable. Setup refuses unknown regular-file
+  executables rather than overwriting them. It does not edit shell PATH; on a new
+  machine, the installed bin directory still needs to be on PATH as reported by
+  setup. Isolated `CONFIG_PI_HOME` deployments do not install a global wrapper.
   Custom plugins and the local fallback/test runtime are pinned by
   `pi/package-lock.json`.
   Trusted project Pi configuration and shared `~/.agents/skills` discovery
@@ -453,7 +465,7 @@ instructions. No video tools, extra extensions, or upstream skills are installed
 
 Edit defaults **in this repo**, then relaunch. `/settings` and saved model
 changes affect the current deployment but are reset at the next setup (also
-run automatically by `pi.sh`, but not by global `pi`).
+run automatically by both `pi.sh` and the installed `pi` wrapper).
 Credentials and sessions are preserved. Future configuration files must also
 be deployed through `init.sh`; don't hand-install into the state directory.
 
@@ -471,6 +483,7 @@ modified legacy files are preserved.
 
 ```bash
 ./init.sh --pi
+bash ./pi/test-command.sh # Executable wrapper and real-TTY launch routing
 ./pi/test-setup.sh        # Deployment failures, unusual paths, private state
 ./pi/test-mcp.sh          # Private Grafana import and fake stdio MCP round-trip
 ./pi/test-credential-prompts.sh # Real-terminal hidden input, partial config and skips

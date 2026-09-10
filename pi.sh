@@ -15,12 +15,14 @@ fi
 # Prefer the user's independently updated Pi. Isolated tests use the lockfile.
 pi_binary="$repo/pi/node_modules/.bin/pi"
 if [[ -z "${CONFIG_PI_HOME:-}" ]]; then
-  if command -v pi >/dev/null 2>&1; then
-    pi_binary="$(command -v pi)"
+  if type -P pi >/dev/null 2>&1; then
+    pi_binary="$(type -P pi)"
   elif [[ -x "$HOME/.local/bin/pi" ]]; then
     pi_binary="$HOME/.local/bin/pi"
   fi
 fi
+source "$repo/pi/command-path.sh"
+pi_binary="$(pi_real_command "$pi_binary")"
 # init.sh installs the private runtime; select it in this process too.
 source "$repo/pi/runtime.sh"
 source "$repo/pi/jq.sh"

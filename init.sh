@@ -11,9 +11,13 @@ printf '%s\n' 'Setting up Pi...' >&2
 # Capture the user's npm prefix before selecting our private runtime. Isolated
 # test/custom homes must not modify the user's global installation.
 pi_global_prefix=''
+export CONFIG_PI_COMMAND_PATH="$(type -P pi || true)"
+if [[ -n "$CONFIG_PI_COMMAND_PATH" ]]; then
+  CONFIG_PI_COMMAND_PATH="$(cd -- "$(dirname -- "$CONFIG_PI_COMMAND_PATH")" && pwd)/$(basename -- "$CONFIG_PI_COMMAND_PATH")"
+fi
 export CONFIG_PI_INSTALL_GLOBAL=0
 export CONFIG_PI_GLOBAL_NEEDS_NODE=0
-if [[ -z "${CONFIG_PI_HOME:-}" ]] && ! command -v pi >/dev/null 2>&1; then
+if [[ -z "${CONFIG_PI_HOME:-}" && -z "$CONFIG_PI_COMMAND_PATH" ]]; then
   pi_global_prefix="$HOME/.local"
   if command -v npm >/dev/null 2>&1; then
     pi_global_prefix="$(npm prefix -g)"
@@ -21,6 +25,7 @@ if [[ -z "${CONFIG_PI_HOME:-}" ]] && ! command -v pi >/dev/null 2>&1; then
     export CONFIG_PI_GLOBAL_NEEDS_NODE=1
   fi
   export CONFIG_PI_INSTALL_GLOBAL=1
+  export CONFIG_PI_COMMAND_PATH="$pi_global_prefix/bin/pi"
 fi
 export CONFIG_PI_GLOBAL_PREFIX="$pi_global_prefix"
 # Keep the private Pi runtime PATH out of the Neovim/global tool installers.
