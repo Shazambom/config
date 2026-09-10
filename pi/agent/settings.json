@@ -15,6 +15,9 @@
   "observational-memory": {
     "enabled": true,
     "compactAtContextTokens": 700000,
+    "compactAtContextTokensByModel": {
+      "openai-codex/gpt-6-astra": 350000
+    },
     "tailTokens": 40000
   },
   "packages": [

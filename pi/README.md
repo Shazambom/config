@@ -287,7 +287,11 @@ Long-context defaults deploy through `init.sh --pi`:
   direct Anthropic `claude-fable-5` / `claude-fable-5-1` to 1,000,000 tokens.
   Unknown model IDs are ignored; other providers are unchanged. This file is
   repository-owned, so edit it here rather than the deployed copy.
-- OM compacts at 700,000 tokens and retains approximately 40,000 recent raw tokens.
+- OM compacts Codex Astra at 350,000 tokens. Other models, including Fable, retain
+  the 700,000-token threshold. The `compactAtContextTokensByModel` map in
+  `observational-memory` uses exact `provider/model-id` keys. Model switching
+  updates the trigger and `/om:status` threshold. All retain approximately 40,000
+  recent raw tokens; model context windows and Pi fallback settings are unchanged.
 - Pi fallback compaction reserves 128,000 tokens and retains 40,000 recent tokens.
   It can trigger earlier when switching to a smaller-context model. Models with
   windows at or below 128,000 need a smaller reserve in project settings.

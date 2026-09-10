@@ -1,13 +1,25 @@
-diff --git a/src/config.ts b/src/config.ts
 --- a/src/config.ts
 +++ b/src/config.ts
-@@ -12,0 +13 @@ export interface Config {
+@@ -12,0 +13 @@
 +	enabled: boolean;
-@@ -49,0 +51 @@ export const DEFAULTS: Config = {
+@@ -22,0 +24 @@
++	compactAtContextTokensByModel: Record<string, number>;
+@@ -49,0 +52 @@
 +	enabled: false,
-@@ -99,0 +102 @@ function normalizeSettingsConfig(value: Record<string, unknown>, base: Config): Partial<Config> {
+@@ -54,0 +58 @@
++	compactAtContextTokensByModel: {},
+@@ -99,0 +104,6 @@
 +	if (typeof value.enabled === "boolean") normalized.enabled = value.enabled;
-diff --git a/src/index.ts b/src/index.ts
++	if (isRecord(value.compactAtContextTokensByModel) && !Array.isArray(value.compactAtContextTokensByModel)) {
++		normalized.compactAtContextTokensByModel = Object.fromEntries(
++			Object.entries(value.compactAtContextTokensByModel).filter(([, tokens]) => positiveIntegerOrUndefined(tokens) !== undefined),
++		) as Record<string, number>;
++	}
+@@ -159,0 +170,4 @@
++		compactAtContextTokensByModel: {
++			...globalConfig.compactAtContextTokensByModel,
++			...projectConfig.compactAtContextTokensByModel,
++		},
 --- a/src/index.ts
 +++ b/src/index.ts
 @@ -24 +24 @@
@@ -16,6 +28,37 @@ diff --git a/src/index.ts b/src/index.ts
 @@ -31 +31 @@
 -	return false;
 +	return defaultEnabled;
-@@ -49 +49 @@
+@@ -46,0 +47 @@
++		runtime.mainModel = ctx.model;
+@@ -49 +50 @@
 -		runtime.enabled = readGateFromLedger(branch);
 +		runtime.enabled = readGateFromLedger(branch, runtime.config.enabled);
+@@ -55,0 +57,5 @@
++	pi.on("model_select", (event, ctx) => {
++		runtime.mainModel = event.model;
++		runtime.refreshFooterGauges(ctx.sessionManager.getBranch() as Entry[], ctx.getContextUsage?.()?.tokens ?? null);
++	});
++
+--- a/src/runtime.ts
++++ b/src/runtime.ts
+@@ -11,0 +12 @@
++	mainModel: { provider: string; id: string } | undefined;
+@@ -12,0 +14,5 @@
++	get compactionThreshold(): number {
++		const key = this.mainModel ? `${this.mainModel.provider}/${this.mainModel.id}` : "";
++		return this.config.compactAtContextTokensByModel[key] ?? this.config.compactAtContextTokens;
++	}
++
+@@ -124 +130 @@
+-			ctxMax: this.config.compactAtContextTokens,
++			ctxMax: this.compactionThreshold,
+--- a/src/hooks/compaction-trigger.ts
++++ b/src/hooks/compaction-trigger.ts
+@@ -77 +77 @@
+-		if (!contextPressureTokens(ctx, runtime.config.compactAtContextTokens).due) return;
++		if (!contextPressureTokens(ctx, runtime.compactionThreshold).due) return;
+--- a/src/commands/status.ts
++++ b/src/commands/status.ts
+@@ -37 +37 @@
+-				`  context: ${contextTokens != null ? contextTokens.toLocaleString() : "?"} / ${runtime.config.compactAtContextTokens.toLocaleString()} tok`,
++				`  context: ${contextTokens != null ? contextTokens.toLocaleString() : "?"} / ${runtime.compactionThreshold.toLocaleString()} tok`,

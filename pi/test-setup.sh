@@ -64,6 +64,7 @@ jq -e 'has("subagents") | not' "$agent/settings.json" >/dev/null || fail 'Legacy
 jq -e '. as $s | .["observational-memory"].models | all(.[]; .provider == $s.defaultProvider and .id == $s.defaultModel)' "$agent/settings.json" >/dev/null || fail 'Memory model drift'
 jq -e '.["observational-memory"].enabled == true' "$agent/settings.json" >/dev/null || fail 'Memory default disabled'
 jq -e '.["observational-memory"].compactAtContextTokens == 700000 and
+  .["observational-memory"].compactAtContextTokensByModel == {"openai-codex/gpt-6-astra": 350000} and
   .["observational-memory"].tailTokens == 40000 and
   .compaction.enabled == true and .compaction.reserveTokens == 128000 and
   .compaction.keepRecentTokens == 40000' "$agent/settings.json" >/dev/null || fail 'Long-context compaction drift'
@@ -90,6 +91,7 @@ jq -e '.vars.editor == "#2B2B2B" and .vars.text == "#A9B7C6" and
 jq -e '.providers["openai-codex"].modelOverrides["gpt-6-astra"].contextWindow == 872000 and
   .providers.anthropic.modelOverrides["claude-fable-5"].contextWindow == 1000000 and
   .providers.anthropic.modelOverrides["claude-fable-5-1"].contextWindow == 1000000' "$agent/models.json" >/dev/null || fail 'Long-context model drift'
+PI_CODING_AGENT_DIR="$agent" node "$repo/pi/tests/memory-threshold-fixture.mjs"
 cp "$agent/settings.json" "$test_dir/settings.expected"
 
 expect_setup_failure() {
