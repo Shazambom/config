@@ -12,6 +12,8 @@ aside and rerun init. Setup does not synchronize edits back into this repository
   `prove-it.md`, and `blast-radius.md`.
 - `~/Scheduler/.claude`: the `grafana-logs` skill and 19 commands. All commands
   other than the three listed above came from Scheduler.
+- Claude Code built-ins: the `simplify` skill, transcribed from the CLI's
+  bundled skill text (not present on disk in any Claude config).
 
 There were no destination name collisions in this snapshot. Only skills and
 commands were imported, not Claude settings, sessions, credentials, or MCP config.
