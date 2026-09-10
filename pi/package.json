@@ -6,6 +6,7 @@
   "devDependencies": { "jiti": "2.7.0" },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "0.85.1",
+    "@latentminds/pi-quotas": "0.5.0",
     "pi-diff-review": "0.1.26",
     "pi-mcp-adapter": "2.32.1",
     "@sinclair/typebox": "0.34.49",

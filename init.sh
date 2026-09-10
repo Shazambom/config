@@ -35,6 +35,7 @@ export CONFIG_PI_GLOBAL_PREFIX="$pi_global_prefix"
   source "$repo/pi/jq.sh"
   ensure_pi_jq
   bash "$repo/pi/setup.sh"
+  bash "$repo/tmux/setup.sh"
   if [[ "$CONFIG_PI_GLOBAL_NEEDS_NODE" == 1 ]]; then
     mkdir -p "$pi_global_prefix/bin"
     if [[ ! -e "$pi_global_prefix/bin/node" ]]; then

@@ -155,6 +155,56 @@ extensions are extracted. No upstream skills are installed. Pi loads local
 paths, not floating `pi install` entries. Extension TypeScript is upstream code;
 installation, deployment, and test orchestration stay in Bash.
 
+### Subscription quotas
+
+`init.sh --pi` installs `@latentminds/pi-quotas@0.5.0` from the npm lockfile.
+Restart Pi or run `/reload`, then use:
+
+```text
+/usage              # Anthropic and OpenAI Codex subscription quotas
+/quotas             # Same dashboard
+/anthropic:quotas    # Anthropic only, including authentication errors
+/codex:quotas        # Codex only, including authentication errors
+```
+
+The dashboard shows remaining percentages and reset times reported by the
+providers. Press `r` to refresh or `q` / Escape to close. Cached results last
+five minutes for Anthropic and one minute for Codex; `r` bypasses the cache.
+Missing subscriptions and authentication errors remain visible. These are
+account-wide provider quotas, not this conversation's token count or billing.
+
+`pi/overrides/quotas.ts` loads only the upstream dashboard and fetch helpers.
+The package's footer, warning notifications, token-history scanner, settings
+command, and other provider commands are not enabled. Nothing polls in the
+background. Commands refuse print, JSON, RPC, subagent, and memory-worker
+invocations before reading credentials or fetching quotas. The wrapper registers
+no model tools or session hooks and does not read project quota settings.
+
+On explicit invocation, the extension resolves credentials through Pi's model
+registry and reads stored OAuth metadata from the active agent directory's
+`auth.json`. Codex falls back to `~/.codex/auth.json` for an account ID if Pi's
+entry lacks one. Credentials go only to the respective provider's HTTPS quota
+endpoint, `api.anthropic.com/api/oauth/usage` or
+`chatgpt.com/backend-api/wham/usage`. Pi may refresh expired OAuth credentials
+through its normal auth flow. No model completion is requested. Direct Anthropic
+API keys cannot report subscription usage; use `/login` with a subscription.
+
+`pi/patches/quotas.patch` adapts the imported modules to the
+`@earendil-works` namespace, exposes the dashboard helper, truncates its help
+line on narrow terminals, and suppresses raw HTTP bodies and unexpected error
+text. HTTP failures retain their status code. Setup reapplies the patch from a
+preserved upstream source copy. TypeScript is needed for the upstream extension
+API; installation and test orchestration use Bash.
+
+Run `./pi/test-quotas.sh` for isolated deployment and mocked Anthropic/Codex
+checks. An optional Pi package directory tests another installed runtime, for
+example `./pi/test-quotas.sh /path/to/global/node_modules/@earendil-works/pi-coding-agent`.
+The fixture uses the real extension loader and auth registry, checks refresh,
+error redaction, noninteractive guards, and dashboard rendering without paid
+calls or real credentials. Live account access and OAuth refresh are not tested.
+Upstream 0.5.0's provider parsing remains unchanged; Anthropic 429 handling and
+additional scoped quota windows from open upstream PRs are not included.
+
 ### Human code review — `pi-diff-review@0.1.26`
 
 Terminal-native diffs and line/range annotations. Restart `pi.sh` after adding
@@ -252,6 +302,22 @@ tmux create a session; launches inside tmux reuse the current pane. Print/RPC,
 help, version, and model-listing invocations bypass tmux. `Ctrl+b d` detaches; `tmux attach` returns.
 `pi/patches/interactive-subagents.patch` makes spawn and resume use the parent's
 Node executable and Pi entry point, independent of a new pane's shell PATH.
+
+### Tmux scrolling
+
+`init.sh --pi` deploys `tmux/tmux.conf` to `~/.config/portable-pi/tmux.conf`
+and adds one `source-file` line to `~/.tmux.conf`, preserving existing contents.
+Mouse and trackpad scrolling are enabled by default. Setup applies the defaults
+immediately when run inside tmux; otherwise new tmux servers load them at startup.
+Custom `CONFIG_PI_HOME` deployments skip this user-wide configuration.
+
+Scroll upward over a pane to enter tmux copy mode. Press `q` to return to Pi.
+The keyboard alternative is `Ctrl+b`, then `[`, followed by arrows or Page Up/Down
+(`Fn+↑/↓` on Mac). Terminal scrollback outside tmux is separate from pane history.
+Mouse mode also lets tmux handle pane selection and text selection; native terminal
+selection may require the terminal's mouse-bypass modifier.
+
+Verify deployment without changing your tmux server with `bash tmux/test.sh`.
 
 ### Browser
 

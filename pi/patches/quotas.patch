@@ -1,0 +1,161 @@
+diff --git a/src/config.ts b/src/config.ts
+index 4ddf362..5239d2e 100644
+--- a/src/config.ts
++++ b/src/config.ts
+@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
+ import { mkdir, readFile, writeFile } from "node:fs/promises";
+ import { dirname, join } from "node:path";
+ import { homedir } from "node:os";
+-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
++import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+ import pkg from "../package.json" with { type: "json" };
+ 
+ export type QuotasFeatureId =
+diff --git a/src/extensions/command-quotas/command.ts b/src/extensions/command-quotas/command.ts
+index 8fb7f46..093faed 100644
+--- a/src/extensions/command-quotas/command.ts
++++ b/src/extensions/command-quotas/command.ts
+@@ -1,4 +1,4 @@
+-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
++import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+ import {
+   QUOTAS_EXTENSIONS_REGISTER_EVENT,
+   QUOTAS_EXTENSIONS_REQUEST_EVENT,
+@@ -17,7 +17,7 @@ import { filterDashboardSnapshots } from "./visibility.js";
+ 
+ type Snapshot = { provider: SupportedQuotaProvider; result: QuotasResult };
+ 
+-async function openQuotaView(
++export async function openQuotaView(
+   title: string,
+   loadSnapshots: (force: boolean, signal?: AbortSignal) => Promise<Snapshot[]>,
+   ctx: ExtensionCommandContext,
+diff --git a/src/extensions/command-quotas/components/quotas-display.ts b/src/extensions/command-quotas/components/quotas-display.ts
+index f63d919..b1a1a78 100644
+--- a/src/extensions/command-quotas/components/quotas-display.ts
++++ b/src/extensions/command-quotas/components/quotas-display.ts
+@@ -1,7 +1,7 @@
+-import type { Theme } from "@mariozechner/pi-coding-agent";
+-import { DynamicBorder } from "@mariozechner/pi-coding-agent";
+-import type { Component } from "@mariozechner/pi-tui";
+-import { Loader, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
++import type { Theme } from "@earendil-works/pi-coding-agent";
++import { DynamicBorder } from "@earendil-works/pi-coding-agent";
++import type { Component } from "@earendil-works/pi-tui";
++import { Loader, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
+ import pkg from "../../../../package.json" with { type: "json" };
+ import { PROVIDER_LABELS } from "../../../lib/quotas.js";
+ import type { QuotasResult, SupportedQuotaProvider } from "../../../types/quotas.js";
+@@ -119,7 +119,7 @@ export class QuotasComponent implements Component {
+     }
+ 
+     lines.push("");
+-    lines.push(this.theme.fg("dim", `  pi-quotas v${pkg.version}  ·  r to refresh  q/Esc to close`));
++    lines.push(truncateToWidth(this.theme.fg("dim", `  pi-quotas v${pkg.version}  ·  r to refresh  q/Esc to close`), width));
+     lines.push(...border.render(width));
+     return lines;
+   }
+diff --git a/src/lib/auth.ts b/src/lib/auth.ts
+index 545edfb..99f76ab 100644
+--- a/src/lib/auth.ts
++++ b/src/lib/auth.ts
+@@ -3,7 +3,7 @@ import { join } from "node:path";
+ import {
+   getAgentDir,
+   type AuthStorage,
+-} from "@mariozechner/pi-coding-agent";
++} from "@earendil-works/pi-coding-agent";
+ 
+ type CompatibleModelRegistry = {
+   authStorage?: AuthStorage;
+diff --git a/src/lib/quotas.ts b/src/lib/quotas.ts
+index bef160d..8000675 100644
+--- a/src/lib/quotas.ts
++++ b/src/lib/quotas.ts
+@@ -1,4 +1,4 @@
+-import type { AuthStorage } from "@mariozechner/pi-coding-agent";
++import type { AuthStorage } from "@earendil-works/pi-coding-agent";
+ import { PROVIDER_FETCHERS } from "../providers/fetch.js";
+ import type { QuotasResult, SupportedQuotaProvider } from "../types/quotas.js";
+ 
+@@ -77,7 +77,7 @@ function toFailureResult(
+   return {
+     success: false,
+     error: {
+-      message: message.split("\n")[0].slice(0, 200) || "Unknown error",
++      message: "Quota lookup failed; check provider authentication with /login",
+       kind: "network",
+     },
+   };
+diff --git a/src/providers/fetch.ts b/src/providers/fetch.ts
+index 7e65ec7..f6dcf71 100644
+--- a/src/providers/fetch.ts
++++ b/src/providers/fetch.ts
+@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
+ import { readFileSync } from "node:fs";
+ import { homedir } from "node:os";
+ import { join } from "node:path";
+-import type { AuthStorage } from "@mariozechner/pi-coding-agent";
++import type { AuthStorage } from "@earendil-works/pi-coding-agent";
+ import type { QuotasErrorKind, QuotasResult, SupportedQuotaProvider } from "../types/quotas.js";
+ import {
+   parseAnthropicUsage,
+@@ -66,34 +66,6 @@ type FetchJsonResult =
+       kind: "timeout" | "cancelled" | "http" | "network";
+     };
+ 
+-/**
+- * Reduce a raw HTTP error body to a short, human-readable message.
+- *
+- * Many APIs return a JSON error object (e.g. Anthropic's
+- * `{"error":{"type":"authentication_error","message":"..."}}` or a
+- * bare `{"message":"..."}`). Surfacing the raw blob in the dashboard or
+- * footer is ugly and confusing, so extract the inner message field when the
+- * body parses as JSON; otherwise return the body unchanged.
+- */
+-function cleanHttpErrorMessage(body: string): string {
+-  const trimmed = body.trim();
+-  if (!trimmed) return "";
+-  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return trimmed;
+-  try {
+-    const parsed = JSON.parse(trimmed) as any;
+-    const message =
+-      parsed?.error?.message ??
+-      parsed?.message ??
+-      parsed?.error ??
+-      parsed?.detail ??
+-      parsed?.error_description;
+-    if (typeof message === "string" && message.trim()) return message.trim();
+-  } catch {
+-    // Not valid JSON — fall through to the raw body.
+-  }
+-  return trimmed;
+-}
+-
+ async function fetchJson(
+   url: string,
+   init: RequestInit,
+@@ -106,11 +78,11 @@ async function fetchJson(
+   try {
+     const response = await fetch(url, { ...init, signal: combined });
+     if (!response.ok) {
+-      const body = await response.text().catch(() => "");
++      await response.body?.cancel().catch(() => undefined);
+       return {
+         ok: false,
+         status: response.status,
+-        message: cleanHttpErrorMessage(body) || response.statusText || `HTTP ${response.status}`,
++        message: `HTTP ${response.status}`,
+         kind: "http",
+       };
+     }
+@@ -125,8 +97,7 @@ async function fetchJson(
+       }
+       return { ok: false, message: "Request cancelled", kind: "cancelled" };
+     }
+-    const message = err instanceof Error ? err.message : "Unknown error";
+-    return { ok: false, message, kind: "network" };
++    return { ok: false, message: "Quota request failed", kind: "network" };
+   }
+ }
+ 

@@ -72,6 +72,18 @@ fi
 cp "$review_dir/component-upstream.ts" "$stage/component.ts"
 (cd "$stage"; git apply "$repo/pi/patches/diff-review-colors.patch")
 mv "$stage/component.ts" "$review_dir/component.ts"
+quotas_dir="$repo/pi/node_modules/@latentminds/pi-quotas"
+jq -e '.version == "0.5.0"' "$quotas_dir/package.json" >/dev/null || {
+  echo 'pi-quotas version changed; review the portable quota patch before deploying.' >&2
+  exit 1
+}
+if [[ ! -d "$quotas_dir/src-upstream" ]]; then
+  cp -R "$quotas_dir/src" "$quotas_dir/src-upstream"
+fi
+mkdir -p "$stage/quotas"
+cp -R "$quotas_dir/src-upstream" "$stage/quotas/src"
+(cd "$stage/quotas"; git apply "$repo/pi/patches/quotas.patch")
+cp -R "$stage/quotas/src/." "$quotas_dir/src/"
 config_ref="$(jq -r '.[] | select(.name == "pi-config") | .ref' "$repo/pi/upstream.json")"
 mkdir -p "$agent/extensions"
 for extension in browser prompt-snippets web-fetch web-search; do
