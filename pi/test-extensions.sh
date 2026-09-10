@@ -13,9 +13,9 @@ export PATH="$repo/pi/node_modules/.bin:$PATH"
 export PI_SUBAGENT_SHELL_READY_DELAY_MS=1000
 printf '%s\n' PORTABLE_PI_CHILD_EVIDENCE > evidence.txt
 jq -e '
-  . as $s | .["observational-memory"].models |
-  all(.[]; .provider == $s.defaultProvider and .id == $s.defaultModel and .thinking == $s.defaultThinkingLevel)
-' "$PI_CODING_AGENT_DIR/settings.json" >/dev/null || fail 'Memory model does not match configured model'
+  .["observational-memory"].models |
+  all(.[]; .provider == "openai-codex" and .id == "gpt-5.6-sol" and .thinking == "medium")
+' "$PI_CODING_AGENT_DIR/settings.json" >/dev/null || fail 'Memory workers must use Sol'
 mkfifo "$test_dir/model-status"
 exec 3<> "$test_dir/model-status"
 node "$repo/pi/tests/model-fixture.mjs" > "$test_dir/model-status" 2> "$test_dir/model.log" &

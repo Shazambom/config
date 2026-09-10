@@ -276,9 +276,9 @@ the session; `/om on` re-enables it. Saved choices survive restart and reload.
 extension while preserving saved session choices. TypeScript is required by the
 upstream extension API. Setup applies the patch through `init.sh --pi`.
 
-Setup derives both observer and consolidator models from `defaultProvider`,
-`defaultModel`, and `defaultThinkingLevel` in `pi/agent/settings.json`. A temporary
-`/model` selection does not change memory's configured model. Both roles use
+Both observer and consolidator use `openai-codex/gpt-5.6-sol` with medium thinking,
+configured under `observational-memory.models` in `pi/agent/settings.json`.
+Changing the main default model or using `/model` does not change memory's models. Both roles use
 the normal Pi credentials and consume model quota when enabled.
 
 Long-context defaults deploy through `init.sh --pi`:
@@ -494,6 +494,6 @@ The live inventory test deliberately asserts the current counts; update it
 when the expected global inventory changes. Offline extension tests exercise
 parallel tmux agents and resume, worker writes, child tool inventories, browser
 interaction, local page extraction, memory on/off, and observer/consolidator
-subprocesses. They assert that deployed memory models match the configured
-default. They do not assess model-generated memory quality. The live web test
+subprocesses. They assert that both deployed memory workers use Sol independently
+of the main agent's default model. They do not assess model-generated memory quality. The live web test
 requires the two Google environment variables and uses no model calls.

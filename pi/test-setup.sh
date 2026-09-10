@@ -61,7 +61,7 @@ for source in "$repo/pi/agent/extensions/prompt-snippets/snippets/"*.md; do
   cmp -s "$source" "$agent/extensions/prompt-snippets/snippets/${source##*/}" || fail 'Repository snippet not deployed'
 done
 jq -e 'has("subagents") | not' "$agent/settings.json" >/dev/null || fail 'Legacy subagent settings'
-jq -e '. as $s | .["observational-memory"].models | all(.[]; .provider == $s.defaultProvider and .id == $s.defaultModel)' "$agent/settings.json" >/dev/null || fail 'Memory model drift'
+jq -e '.["observational-memory"].models | all(.[]; .provider == "openai-codex" and .id == "gpt-5.6-sol" and .thinking == "medium")' "$agent/settings.json" >/dev/null || fail 'Memory model drift'
 jq -e '.["observational-memory"].enabled == true' "$agent/settings.json" >/dev/null || fail 'Memory default disabled'
 jq -e '.["observational-memory"].compactAtContextTokens == 700000 and
   .["observational-memory"].compactAtContextTokensByModel == {"openai-codex/gpt-6-astra": 350000} and

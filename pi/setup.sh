@@ -45,9 +45,7 @@ jq --arg root "$repo/pi" --slurpfile upstream "$repo/pi/upstream.json" --rawfile
     $duplicates[0] | error("Duplicate Claude command /\(.[0].name): \(map(.path) | join(" and ")). Rename one to avoid shadowing.")
   else
     .prompts = ((.prompts // []) + $files) |
-    .packages |= map(if type == "string" then package_path else .source |= package_path end) |
-    {provider: .defaultProvider, id: .defaultModel, thinking: .defaultThinkingLevel} as $model |
-    .["observational-memory"].models = {observer: $model, consolidator: $model}
+    .packages |= map(if type == "string" then package_path else .source |= package_path end)
   end
 ' "$repo/pi/agent/settings.json" > "$stage/settings.json"
 diff_dir="$repo/pi/node_modules/pi-diff-review/src/diff"
