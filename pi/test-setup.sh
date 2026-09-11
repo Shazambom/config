@@ -26,6 +26,7 @@ mkdir -p "$agent/extensions/browser/.profile" "$agent/extensions/subagent"
 printf '%s\n' 'private browser fixture' > "$agent/extensions/browser/.profile/state"
 printf '%s\n' '{"custom":true}' > "$agent/web-search.json"
 cp "$repo/pi/tests/legacy-subagent-config.json" "$agent/extensions/subagent/config.json"
+cp "$repo/pi/tests/legacy-mascot.ts" "$agent/extensions/mascot.ts"
 printf '%s\n' \
   'touch "$HOME/zshrc-executed"' \
   'export GOOGLE_SEARCH_API_KEY="fixture-key"' \
@@ -82,8 +83,15 @@ done
 jq -e '. as $theme | [.colors.toolPendingBg, .colors.toolSuccessBg, .colors.toolErrorBg] |
   map(. as $color | $theme.vars[$color] // $color) | unique | . == ["#1E1F22"]' \
   "$agent/themes/jetbrains-dark.json" >/dev/null || fail 'Live tool panels must remain charcoal'
-cmp -s "$repo/pi/agent/extensions/mascot.ts" "$agent/extensions/mascot.ts" || fail 'Mascot not deployed'
-node "$repo/pi/tests/mascot-fixture.mjs"
+[[ ! -e "$agent/extensions/mascot.ts" ]] || fail 'Retired mascot retained'
+printf '%s\n' '// User-customized extension' > "$agent/extensions/mascot.ts"
+cp "$agent/extensions/mascot.ts" "$test_dir/mascot.expected"
+"$repo/init.sh" --pi > "$test_dir/mascot-setup.log" 2>&1
+cmp -s "$agent/extensions/mascot.ts" "$test_dir/mascot.expected" || fail 'Customized mascot removed'
+grep -q 'Preserving customized .*mascot.ts' "$test_dir/mascot-setup.log" || fail 'Missing customized mascot warning'
+rm "$agent/extensions/mascot.ts"
+"$repo/init.sh" --pi > "$test_dir/mascot-setup.log" 2>&1
+[[ ! -e "$agent/extensions/mascot.ts" ]] || fail 'Retired mascot redeployed'
 jq -e '.vars.editor == "#2B2B2B" and .vars.text == "#A9B7C6" and
   .vars.orange == "#CC7832" and .vars.green == "#6A8759" and
   .colors.syntaxFunction == "#FFC66D" and .colors.syntaxNumber == "#6897BB"' \

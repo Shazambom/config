@@ -125,11 +125,16 @@ while IFS= read -r -d '' source; do
 done < "$stage/resources"
 for entry in \
   'extensions/subagent/config.json:ff02ed2fb474b96db9e205864dea567e83210dbbb267069aa60cd48144ea3395' \
+  'extensions/mascot.ts:be0cdca42e790934b84c56c18d9f995fdfb611d660ee9ee01f1ff230cb5db9c6' \
   'web-search.json:5a34214ecaab443fc72b758d32c130e2a88167b55c4030b809e6eb917f67d7dd'; do
   path="$agent/${entry%%:*}"
   [[ -f "$path" && ! -L "$path" ]] || continue
   if command -v sha256sum >/dev/null; then hash="$(sha256sum "$path")"; else hash="$(shasum -a 256 "$path")"; fi
-  [[ "${hash%% *}" != "${entry#*:}" ]] || rm "$path"
+  if [[ "${hash%% *}" == "${entry#*:}" ]]; then
+    rm "$path"
+  elif [[ "${entry%%:*}" == extensions/mascot.ts ]]; then
+    printf 'Preserving customized %s; move it aside to disable the retired mascot.\n' "$path" >&2
+  fi
 done
 if [[ -z "${CONFIG_PI_HOME:-}" ]]; then
   bash "$repo/pi/install-command.sh" "$CONFIG_PI_COMMAND_PATH"

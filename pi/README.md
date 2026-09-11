@@ -87,13 +87,9 @@ The active custom theme hot-reloads when its deployed file changes. Set the
 portable default in `pi/agent/settings.json`; setup resets choices saved only
 through `/settings`.
 
-The `mascot.ts` extension replaces the startup header with a theme-colored Pi
-mascot. It reveals over one second and blinks every four seconds until terminal
-input stops the animation without consuming the input. `/mascot` replays it;
-`/mascot off` restores the standard header for the current session. Reload/startup
-shows it again. Timers stop on input, header disposal, reload, and shutdown.
-RPC, print mode, subagents, and OM workers do not display the mascot. TypeScript
-is used because this is a Pi TUI extension, not a standalone setup script.
+Pi uses its standard startup header. Setup removes the known repository-owned
+mascot extension by checksum. A customized copy is preserved with a warning;
+move that file aside if you want to disable it too.
 
 ## Claude commands and skills
 
@@ -580,6 +576,29 @@ DIFF_TEST_FULLSCREEN=1 ./pi/test-diff-render.sh # Fullscreen renderer
 
 Test entry points and shared lifecycle helpers use Bash 3.2 and jq; they select
 the bootstrapped tools themselves. The JS fixtures directly exercise upstream TypeScript APIs.
+`pi/test-startup-render.sh [tmux|direct] [columns] [rows] [compact|expanded]
+[plain|legacy-mascot]` measures real startup and `/reload` output with repository defaults.
+For example, compare `./pi/test-startup-render.sh direct 122 54 compact plain`
+with `./pi/test-startup-render.sh tmux 122 54 compact plain`. It uses isolated
+HOME/auth/config, disables memory workers and model networking, blocks `fetch`,
+and supplies no MCP connections or credentials. It sends no model prompts.
+The probe observes five seconds after each session start and has a 25-second
+process deadline. Setup must already have installed the local dependencies.
+
+Set `PI_STARTUP_HISTORY_LINES=150` to add a long synthetic transcript before
+reload. The optional `legacy-mascot` mode loads `pi/tests/legacy-mascot.ts` only
+inside the fixture to reproduce the retired animation's hidden-header redraws.
+Setup never deploys this test fixture.
+The script reports Pi's `CSI 2J` timestamps and attached-client clear/synchronized
+frame counts. `PI_STARTUP_KEEP=1` retains synthetic ANSI traces in a printed temp
+directory; otherwise it removes them. Counts alone cannot establish visible
+flicker. tmux attach/exit clears are included, early output before the probe loads
+is only in the client trace, and missing credentials add startup warnings.
+The macOS path is tested; the Linux `script` invocation is unverified.
+In Pi 0.85.1, `InteractiveMode.handleReloadCommand()` in
+`dist/modes/interactive/interactive-mode.js` explicitly requests a full repaint
+before showing its reload progress box.
+
 `pi/tests/diff-fixture.mjs` loads the deployed diff adapter and parser.
 `pi/tests/model-fixture.mjs` emulates OpenAI HTTP/SSE tool calls.
 `pi/tests/extension-fixture.mjs` exercises real SDK tools, browser commands,

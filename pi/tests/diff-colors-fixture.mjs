@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { createJiti } from 'jiti';
 import { setTheme, theme } from '../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js';
 import { visibleWidth } from '@earendil-works/pi-tui';
@@ -8,11 +7,8 @@ assert.deepEqual(setTheme('jetbrains-dark'), { success: true });
 const jiti = createJiti(import.meta.url);
 const { ReviewComponent } = await jiti.import('../node_modules/pi-diff-review/src/review/component.ts');
 const { parseDiff } = await jiti.import('../node_modules/pi-diff-review/src/diff/parser.ts');
-const mascotBar = readFileSync(new URL('../agent/extensions/mascot.ts', import.meta.url), 'utf8')
-  .split('\n').find(line => line.includes('.repeat(14)'));
-assert(mascotBar?.includes('\\u2588'));
-assert(!mascotBar.includes('█'));
-const lines = parseDiff('diff --git a/example.ts b/example.ts\n--- a/example.ts\n+++ b/example.ts\n@@ -1,2 +1,3 @@\n-const oldValue = "removed";\n+const newValue = "added";\n+' + mascotBar + '\n const unchanged = true;\n');
+const escapedBar = 'const bar = "\\u2588".repeat(14);';
+const lines = parseDiff('diff --git a/example.ts b/example.ts\n--- a/example.ts\n+++ b/example.ts\n@@ -1,2 +1,3 @@\n-const oldValue = "removed";\n+const newValue = "added";\n+' + escapedBar + '\n const unchanged = true;\n');
 const component = new ReviewComponent(
   { requestRender() {}, terminal: { rows: 40, columns: 180 } },
   theme, 'Color fixture', lines, new Map(), () => {},
@@ -36,7 +32,7 @@ assert.equal(theme.getFgAnsi('toolDiffRemoved'), '\x1b[38;2;255;220;215m');
 assert.equal(theme.getBgAnsi('toolErrorBg'), theme.getBgAnsi('toolPendingBg'));
 const barIndex = lines.findIndex(line => line.kind === 'add' && line.text.includes('.repeat(14)'));
 assert(barIndex >= 0);
-assert.equal(component.getRenderedDiffContent(lines[barIndex], barIndex), theme.fg('toolDiffAdded', mascotBar));
+assert.equal(component.getRenderedDiffContent(lines[barIndex], barIndex), theme.fg('toolDiffAdded', escapedBar));
 const redBackground = '\x1b[48;2;103;6;12m';
 assert.notEqual(redBackground, theme.getBgAnsi('toolPendingBg'));
 assert(component.applyDiffBackground(removed, text, 60).startsWith(redBackground));
