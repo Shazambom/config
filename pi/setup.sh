@@ -65,12 +65,24 @@ if [[ "$upstream" != "$diff_dir/source-upstream.ts" ]]; then
 fi
 cp "$repo/pi/overrides/diff-source.ts" "$diff_dir/source.ts.portable"
 mv "$diff_dir/source.ts.portable" "$diff_dir/source.ts"
-review_dir="$repo/pi/node_modules/pi-diff-review/src/review"
+review_root="$repo/pi/node_modules/pi-diff-review/src"
+review_dir="$review_root/review"
+jq -e '.version == "0.1.26"' "$review_root/../package.json" >/dev/null || {
+  echo 'pi-diff-review version changed; review the portable UI adapter before deploying.' >&2
+  exit 1
+}
+if [[ ! -f "$review_root/index-upstream.ts" ]]; then
+  cp "$review_root/index.ts" "$review_root/index-upstream.ts"
+fi
 if [[ ! -f "$review_dir/component-upstream.ts" ]]; then
   cp "$review_dir/component.ts" "$review_dir/component-upstream.ts"
 fi
 cp "$review_dir/component-upstream.ts" "$stage/component.ts"
-(cd "$stage"; git apply "$repo/pi/patches/diff-review-colors.patch")
+cp "$review_root/index-upstream.ts" "$stage/index.ts"
+(cd "$stage"; git apply "$repo/pi/patches/diff-review-colors.patch"; git apply "$repo/pi/patches/diff-review-ui.patch")
+cp "$repo/pi/overrides/diff-ui.ts" "$stage/diff-ui.ts"
+mv "$stage/diff-ui.ts" "$review_root/diff-ui.ts"
+mv "$stage/index.ts" "$review_root/index.ts"
 mv "$stage/component.ts" "$review_dir/component.ts"
 quotas_dir="$repo/pi/node_modules/@latentminds/pi-quotas"
 jq -e '.version == "0.5.0"' "$quotas_dir/package.json" >/dev/null || {

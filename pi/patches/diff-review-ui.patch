@@ -1,0 +1,50 @@
+--- a/index.ts
++++ b/index.ts
+@@ -5,6 +5,7 @@
+ } from "@earendil-works/pi-coding-agent";
+ import { getDiff, parseDiffSource } from "./diff/source.ts";
+ import { parseDiff } from "./diff/parser.ts";
++import { openReview as showReviewOverlay } from "./diff-ui.ts";
+ import { applyReviewedOverlay } from "./diff/turn-based-overlay.ts";
+ import { PiModelDiffExplainer } from "./explanation/explainer.ts";
+ import {
+@@ -207,7 +208,7 @@
+     );
+   }
+ 
+-  const result = await ctx.ui.custom<ReviewResult>(
++  const result = await showReviewOverlay<ReviewResult>(ctx,
+     (tui, theme, _keybindings, done) => {
+       return new ReviewComponent(
+         tui,
+@@ -249,5 +250,5 @@
+   }
+ 
+   persistCachedComments(pi, options.cacheKey, []);
+-  pi.sendUserMessage(options.buildPrompt(result.comments));
++  pi.sendUserMessage(options.buildPrompt(result.comments), { deliverAs: "steer" });
+ }
+--- a/component.ts
++++ b/component.ts
+@@ -491,7 +491,9 @@
+         width,
+       ),
+     );
+-    return this.helpVisible ? this.renderHelpModal(output, width) : output;
++    const rows = this.helpVisible ? this.renderHelpModal(output, width) : output;
++    return rows.slice(0, Math.max(0, this.tui.terminal?.rows ?? 24))
++      .map((line) => truncateToWidth(line, width));
+   }
+ 
+   private getHeaderText(
+@@ -1451,9 +1453,7 @@
+ 
+   private getContentHeight(): number {
+     const terminalRows = this.tui.terminal?.rows ?? 24;
+-    const headerHeight = 3;
+-    const footerHeight = 2;
+-    return Math.max(6, terminalRows - headerHeight - footerHeight);
++    return Math.max(0, terminalRows - 2);
+   }
+ 
+   invalidate(): void {

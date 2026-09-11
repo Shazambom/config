@@ -3,6 +3,7 @@ set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/tests/common.sh"
 [[ $# == 0 ]] || fail 'Usage: pi/test-diff.sh'
 PI_CODING_AGENT_DIR="$CONFIG_PI_HOME/agent" node "$repo/pi/tests/diff-colors-fixture.mjs"
+node "$repo/pi/tests/diff-ui-fixture.mjs"
 export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
 export GIT_AUTHOR_NAME=Test GIT_AUTHOR_EMAIL=test@example.invalid
 export GIT_COMMITTER_NAME=Test GIT_COMMITTER_EMAIL=test@example.invalid
@@ -100,6 +101,9 @@ printf 'untracked new\n' > untracked
 diff_json > "$test_dir/diff.json"
 has_text '+staged new'
 has_text '+untracked new'
+
+mkdir "$test_dir/submission-agent"
+node "$repo/pi/tests/diff-submit-fixture.mjs" "$PWD" "$test_dir/submission-agent"
 
 mkdir "$test_dir/not-git"
 cd "$test_dir/not-git"

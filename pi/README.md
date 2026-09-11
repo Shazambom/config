@@ -249,7 +249,8 @@ commit. Branch ranges such as `/diff main...HEAD` show committed changes only.
 
 Keys: `v` switches unified/split view, `n/p` moves between hunks, `c` comments,
 `J/K` extends a selection, `Enter` **sends comments to Pi** (which can trigger
-further edits), and `q` exits. `?` requests an optional AI explanation using your
+further edits), and `q` exits. Submitted `/diff` and `/view` comments enter Pi's
+steering queue if the agent is busy, or start a turn if it is idle. `?` requests an optional AI explanation using your
 selected model/account; it sends the excerpt and consumes quota. Merely viewing
 a diff needs no model call. `/diff --turn-based` offers experimental reviewed-hunk
 tracking with `M`, using the complete diff when no Git arguments are supplied.
@@ -257,8 +258,22 @@ tracking with `M`, using the complete diff when no Git arguments are supplied.
 `pi/overrides/diff-source.ts` adapts the pinned package's TypeScript source API.
 `init.sh --pi` preserves the upstream module and deploys this adapter into the
 local package. Setup checks the upstream SHA-256 and refuses an incompatible
-update. The existing TUI, comments, and explicit-argument handling stay upstream.
+update. Comments and explicit-argument handling stay upstream.
 TypeScript is used here because the package imports this module directly.
+
+`pi/overrides/diff-ui.ts` and `pi/patches/diff-review-ui.patch` keep `/diff` and
+`/view` in a full-viewport overlay while the agent streams. In Pi's regular
+terminal mode, the adapter temporarily replaces the TUI instance's base render
+method with blank rows so offscreen transcript updates cannot force screen clears.
+The agent and its UI state keep updating. Closing the review restores the method
+and paints the current transcript. Fullscreen Pi uses its native overlay renderer.
+Setup deploys these changes only into the pinned local diff package, not global Pi.
+
+This adapter is tested with Pi 0.85.1 and diff-review 0.1.26. Unknown regular-mode
+renderers get a warning and an ordinary overlay, which may still repaint while
+streaming. Restart Pi after deployment. Keyboard navigation remains unchanged;
+mouse-wheel navigation is not added. In regular Pi mode, tmux's wheel can enter
+copy mode and scroll terminal history rather than the diff.
 
 Instructions ask Pi to offer a checkpoint after substantial production changes,
 not pop up after every edit. This is post-change review, not a permission gate.
@@ -554,6 +569,8 @@ bash ./pi/test-command.sh # Executable wrapper and real-TTY launch routing
 ./pi/test-mcp.sh          # Private Grafana import and fake stdio MCP round-trip
 ./pi/test-credential-prompts.sh # Real-terminal hidden input, partial config and skips
 ./pi/test-diff.sh         # Complete diff, explicit args, parser, index preservation
+./pi/test-diff-render.sh  # Isolated tmux, synthetic streaming, overlays and resize
+DIFF_TEST_FULLSCREEN=1 ./pi/test-diff-render.sh # Fullscreen renderer
 ./pi/test.sh              # Temporary HOME, nested template, args, skill paths
 ./pi/test.sh --live       # Verify this machine's bundled Claude resources
 ./pi/test-claude-skills.sh # Project trust, ancestor discovery and child loadout
