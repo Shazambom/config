@@ -37,7 +37,9 @@ if [[ "$live" == false ]]; then
   rpc 5 '{"id":"5","type":"clear_queue"}'
   rpc 6 '{"id":"6","type":"steer","message":"/skill:design Use the existing fixture plan"}'
   rpc 7 '{"id":"7","type":"clear_queue"}'
-  cmp "$repo/claude/skills/design/references/document.md" "$HOME/.claude/skills/design/references/document.md"
+  cmp "$repo/claude/skills/design/references/document.txt" "$HOME/.claude/skills/design/references/document.txt"
+  awk 'length($0) > 100 { exit 1 }' "$HOME/.claude/skills/design/references/document.txt" || fail 'Design example exceeds 100 columns'
+  if grep -Eq '^(```|#|\|)' "$HOME/.claude/skills/design/references/document.txt"; then fail 'Design example contains Markdown formatting'; fi
   [[ "$(< "$HOME/.claude/skills/example/references/guide.md")" == 'Reference fixture' ]] || fail 'Reference changed'
 fi
 jq -es --argjson live "$live" --arg home "$HOME" '
@@ -57,7 +59,7 @@ jq -es --argjson live "$live" --arg home "$HOME" '
     check(any(.[]; .name == "skill:example" and .path == $home + "/.claude/skills/example/SKILL.md"); "Skill source path mismatch") |
     check(any(.[]; .name == "skill:design" and .path == $home + "/.claude/skills/design/SKILL.md"); "Missing bundled design skill") |
     check(($responses[6].steering | length) == 1; "Design skill did not queue exactly once") |
-    reduce ["# Design", "references/document.md", "Use the existing fixture plan"][] as $text
+    reduce ["# Design", "references/document.txt", "Write plain text, not Markdown", "design.txt", "git check-ignore -q", "git ls-files", "Prefer an existing Git-ignored", "Use the existing fixture plan"][] as $text
       (.; check(($responses[6].steering[0] | contains($text)); "Expanded design skill missing: " + $text)) |
     check($responses[2].steering == ["Review two words with two words extra."]; "Quoted prompt arguments expanded incorrectly") |
     reduce ["Read references/guide.md", "some context", "skills/example"][] as $text

@@ -4,7 +4,9 @@
 loads them. Existing command files and entire existing skill directories are
 skipped, including symlinks. Local edits and deletions within an installed skill
 stay intact. To opt into a bundled update, move that global command or skill
-aside and rerun init. Setup does not synchronize edits back into this repository.
+aside and rerun init. Setup does not synchronize edits back into this repository. The exact bundled
+external-temp version of `design` is archived outside skill discovery and replaced
+through seeding; customized directories remain untouched.
 
 ## Sources
 
@@ -15,9 +17,12 @@ aside and rerun init. Setup does not synchronize edits back into this repository
 - Claude Code built-ins: the `simplify` skill, transcribed from the CLI's
   bundled skill text (not present on disk in any Claude config).
 - Repository-authored: `design`, an approval-gated contract and data-flow review
-  loop. `/skill:design <existing plan or plan reference>` drafts temporary files,
-  revises them through review comments or direct edits, and waits for explicit
-  implementation approval. Its example lives in `skills/design/references/document.md`.
+  loop. `/skill:design <existing plan or plan reference>` uses a verified ignored
+  project directory, preferring an existing scratch directory and creating `.design/`
+  with an ignore rule only when needed. It revises files through review comments
+  or direct edits and waits for explicit implementation approval. Generated
+  `design.txt` files use plain-text contracts and ASCII diagrams, not Markdown.
+  Its example lives in `skills/design/references/document.txt`.
 
 There were no destination name collisions in this snapshot. Only skills and
 commands were imported, not Claude settings, sessions, credentials, or MCP config.

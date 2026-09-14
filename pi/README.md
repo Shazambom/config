@@ -146,13 +146,19 @@ Review skills before running them: they can direct shell execution.
 ## Design sessions
 
 Run `/skill:design <existing plan or plan reference>` before implementation.
-The skill reads the affected code and drafts `design.md` in a private OS temporary
-directory outside the repository. The document contains contract diffs, data types,
-function signatures, and ASCII data-flow diagrams, with no function bodies or
-prose-heavy plan. Missing decisions appear as `UNRESOLVED` declarations.
+The skill reads the affected code and drafts `design.txt` in a private session
+subdirectory of a verified Git-ignored project directory. It first looks for a
+suitable existing scratch directory. If none exists, it may create `.design/`
+and add `/.design/` to the root `.gitignore`. It checks the actual file paths with
+`git check-ignore` and verifies they are untracked; directory names are not proof.
+The document is plain text, with structs, function signatures, `+`/`-` change
+markers, and ASCII data-flow diagrams. There are no Markdown tables, headings,
+code fences, or function bodies. Lines target 100 columns, with multiline
+signatures and vertical diagrams for comfortable Vim editing. Missing decisions
+appear as `UNRESOLVED` declarations.
 
-The agent gives you concrete `/diff --no-index -- <snapshot> <design.md>` and
-`/view <design.md>` commands. `/diff` collects comments; Enter queues them as
+The agent gives you concrete `/diff --no-index -- <snapshot> <design.txt>` and
+`/view <design.txt>` commands. `/diff` collects comments; Enter queues them as
 steering feedback. It does not directly edit the file. You can also edit the
 working document in Neovim. Each revision preserves an immutable review snapshot,
 and the agent re-reads your edits before applying feedback.
@@ -160,12 +166,14 @@ and the agent re-reads your edits before applying feedback.
 Only an explicit instruction such as "Implement this design" authorizes code
 changes to match the reviewed revision. Submitting comments or closing the review
 does not. This is a skill instruction, not a tool permission sandbox. Design files
-remain temporary and are never staged or committed. Pi sessions and the existing
-review-comment cache can still retain excerpts; this workflow does not erase them.
-OS cleanup may remove temporary files, so keep the path if you want to resume.
+stay ignored and are never staged or committed. The skill may add a workspace
+ignore rule before approval, but leaves it unstaged and reports the change.
+Bare `/diff` omits ignored files; use the supplied `--no-index` comparison or `/view`.
+Pi sessions and the existing review-comment cache can still retain excerpts.
 
-Sources live in `claude/skills/design/` and deploy through `init.sh --pi` using
-normal seed-only skill installation. Existing same-name global skills are preserved.
+Sources live in `claude/skills/design/` and deploy through `init.sh --pi`.
+Setup preserves customized global skills. It migrates the exact bundled external-temp
+version by archiving it outside skill discovery before seeding the updated skill.
 
 ## Installed extensions
 
