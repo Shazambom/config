@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { isAbsolute } from "node:path";
 import {
   parseDiffSource as parseUpstream,
   getDiff as getUpstream,
@@ -20,7 +21,7 @@ export function parseDiffSource(args: string): PortableSource {
   return source;
 }
 
-function git(cwd: string, args: string[], allowed = [0]): string {
+function git(cwd: string, args: string[], allowed = [0], requireCleanDifference = false): string {
   const result = spawnSync("git", ["-c", "core.quotePath=false", ...args], {
     cwd,
     encoding: "utf8",
@@ -30,14 +31,26 @@ function git(cwd: string, args: string[], allowed = [0]): string {
     env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
   });
   if (result.error) throw result.error;
-  if (!allowed.includes(result.status ?? -1)) {
+  if (!allowed.includes(result.status ?? -1) || (requireCleanDifference && result.status === 1 && result.stderr.trim())) {
     throw new Error(result.stderr.trim() || `git ${args[0]} failed: ${result.status}`);
   }
   return result.stdout;
 }
 
 export function getDiff(cwd: string, source: PortableSource): string {
-  if (!source.everything) return getUpstream(cwd, source);
+  if (!source.everything) {
+    const separator = source.args.indexOf("--");
+    const options = separator < 0 ? source.args : source.args.slice(0, separator);
+    if (options.includes("--no-index")) {
+      const paths = separator < 0 ? source.args.slice(-2) : source.args.slice(separator + 1);
+      // Git strips absolute paths' leading slash; retain it after the parser removes a/ or b/.
+      const prefixes = paths.length === 2
+        ? [`--src-prefix=a/${isAbsolute(paths[0]) ? "/" : ""}`, `--dst-prefix=b/${isAbsolute(paths[1]) ? "/" : ""}`]
+        : [];
+      return git(cwd, ["diff", "--no-color", "--unified=3", ...prefixes, ...source.args], [0, 1], true);
+    }
+    return getUpstream(cwd, source);
+  }
 
   const root = git(cwd, ["rev-parse", "--show-toplevel"]).replace(/\r?\n$/, "");
   const head = git(root, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"], [0, 1]).trim();

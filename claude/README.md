@@ -14,6 +14,10 @@ aside and rerun init. Setup does not synchronize edits back into this repository
   other than the three listed above came from Scheduler.
 - Claude Code built-ins: the `simplify` skill, transcribed from the CLI's
   bundled skill text (not present on disk in any Claude config).
+- Repository-authored: `design`, an approval-gated contract and data-flow review
+  loop. `/skill:design <existing plan or plan reference>` drafts temporary files,
+  revises them through review comments or direct edits, and waits for explicit
+  implementation approval. Its example lives in `skills/design/references/document.md`.
 
 There were no destination name collisions in this snapshot. Only skills and
 commands were imported, not Claude settings, sessions, credentials, or MCP config.

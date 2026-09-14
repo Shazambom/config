@@ -143,6 +143,30 @@ Multi-model workflows still require those models and their authentication;
 same-model children are not substitutes for independent model families.
 Review skills before running them: they can direct shell execution.
 
+## Design sessions
+
+Run `/skill:design <existing plan or plan reference>` before implementation.
+The skill reads the affected code and drafts `design.md` in a private OS temporary
+directory outside the repository. The document contains contract diffs, data types,
+function signatures, and ASCII data-flow diagrams, with no function bodies or
+prose-heavy plan. Missing decisions appear as `UNRESOLVED` declarations.
+
+The agent gives you concrete `/diff --no-index -- <snapshot> <design.md>` and
+`/view <design.md>` commands. `/diff` collects comments; Enter queues them as
+steering feedback. It does not directly edit the file. You can also edit the
+working document in Neovim. Each revision preserves an immutable review snapshot,
+and the agent re-reads your edits before applying feedback.
+
+Only an explicit instruction such as "Implement this design" authorizes code
+changes to match the reviewed revision. Submitting comments or closing the review
+does not. This is a skill instruction, not a tool permission sandbox. Design files
+remain temporary and are never staged or committed. Pi sessions and the existing
+review-comment cache can still retain excerpts; this workflow does not erase them.
+OS cleanup may remove temporary files, so keep the path if you want to resume.
+
+Sources live in `claude/skills/design/` and deploy through `init.sh --pi` using
+normal seed-only skill installation. Existing same-name global skills are preserved.
+
 ## Installed extensions
 
 `init.sh --pi` installs npm dependencies from the lockfile and fetches upstream

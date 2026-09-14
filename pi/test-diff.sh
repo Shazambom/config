@@ -7,6 +7,7 @@ node "$repo/pi/tests/diff-ui-fixture.mjs"
 export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
 export GIT_AUTHOR_NAME=Test GIT_AUTHOR_EMAIL=test@example.invalid
 export GIT_COMMITTER_NAME=Test GIT_COMMITTER_EMAIL=test@example.invalid
+node "$repo/pi/tests/diff-no-index-fixture.mjs"
 
 diff_json() { node "$repo/pi/tests/diff-fixture.mjs" "$PWD" "${1:-}"; }
 has_text() { jq -e --arg text "$1" '.text | contains($text)' "$test_dir/diff.json" >/dev/null || fail "Missing $1"; }

@@ -35,6 +35,9 @@ if [[ "$live" == false ]]; then
   rpc 3 '{"id":"3","type":"clear_queue"}'
   rpc 4 '{"id":"4","type":"steer","message":"/skill:example some context"}'
   rpc 5 '{"id":"5","type":"clear_queue"}'
+  rpc 6 '{"id":"6","type":"steer","message":"/skill:design Use the existing fixture plan"}'
+  rpc 7 '{"id":"7","type":"clear_queue"}'
+  cmp "$repo/claude/skills/design/references/document.md" "$HOME/.claude/skills/design/references/document.md"
   [[ "$(< "$HOME/.claude/skills/example/references/guide.md")" == 'Reference fixture' ]] || fail 'Reference changed'
 fi
 jq -es --argjson live "$live" --arg home "$HOME" '
@@ -52,6 +55,10 @@ jq -es --argjson live "$live" --arg home "$HOME" '
   else
     check(any(.[]; .name == "fixture-review" and .source == "prompt"); "Missing nested /fixture-review prompt") |
     check(any(.[]; .name == "skill:example" and .path == $home + "/.claude/skills/example/SKILL.md"); "Skill source path mismatch") |
+    check(any(.[]; .name == "skill:design" and .path == $home + "/.claude/skills/design/SKILL.md"); "Missing bundled design skill") |
+    check(($responses[6].steering | length) == 1; "Design skill did not queue exactly once") |
+    reduce ["# Design", "references/document.md", "Use the existing fixture plan"][] as $text
+      (.; check(($responses[6].steering[0] | contains($text)); "Expanded design skill missing: " + $text)) |
     check($responses[2].steering == ["Review two words with two words extra."]; "Quoted prompt arguments expanded incorrectly") |
     reduce ["Read references/guide.md", "some context", "skills/example"][] as $text
       (.; check(($responses[4].steering[0] | contains($text)); "Expanded skill missing: " + $text))
