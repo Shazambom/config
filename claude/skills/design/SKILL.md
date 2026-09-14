@@ -97,7 +97,43 @@ Apply that spacing to every flow:
 - Show meaningful error and denial paths with short early-return guards.
 - Keep calls at one reading level. If a callee's interactions need explanation, give them a separate named flow rather than nesting an execution trace. Reference that flow with a short comment; do not invent a helper function to shorten the diagram.
 
-Name real owners and methods. Preserve call order and actual data dependencies; formatting must not turn a nested call into a later call or invent a conversion. Mark asynchronous handoffs explicitly. Show boundary orchestration only, not callee internals, loops, algorithms, queries, or speculative calls. Use `UNRESOLVED` comments for unknown decisions. The pseudocode is explanatory and is not checked by gopls.
+Name real owners and methods. Preserve call order and actual data dependencies; formatting must not turn a nested call into a later call or invent a conversion. Mark asynchronous handoffs explicitly. Show orchestration AND the new logic that determines the result. Do not expand unchanged implementation details or invent calls. Use `UNRESOLVED` comments for unknown decisions. The pseudocode is explanatory and is not checked by gopls.
+
+### Show where new values come from
+
+A field declaration and a helper call are not enough to audit a change. Every introduced field, flag, local variable, or derived collection needs a visible origin before its first use. Group related values under a named `DERIVATION: <value or output>` section in the leading comment; a short inline subsection is enough for a simple mapping. Identify external inputs and unchanged call results by their actual source rather than manufacturing derivations for them.
+
+Each derivation must show:
+
+- Inputs and provenance: request field, original record, configuration, query scope, or named earlier output. Show why an input has the required identity or authority; one filtered provider is not necessarily the originally locked provider.
+- The actual predicate, transformation, or construction. Use readable expressions, guards, loops, filtering, merging, or calculations when they are the substance of the change. Do not replace them with a helper name or a sentence saying what it should do.
+- Defaults and alternate paths: false/zero, nil versus empty, missing/invalid inputs, errors, and fallback behavior where relevant.
+- The result's destination and any ownership/mutation constraints.
+
+For example, a new flag needs its expression, not just `config.IsProviderBoundReschedule`:
+
+```go
+/*
+DERIVATION: IsProviderBoundReschedule
+
+    // request.ProviderIDs comes from the existing original-provider lock resolver,
+    // through the reschedule request builder, not from provider filtering.
+    providerLockEnabled := request.AppointmentType != nil &&
+        request.AppointmentType.RescheduleLockProvider
+
+    hasOneLockedProvider := len(request.ProviderIDs) == 1 &&
+        request.ProviderIDs[0] != uuid.Nil
+
+    selectionRequest.IsProviderBoundReschedule = request.IsForReschedule &&
+        !request.IsForNewAppointment &&
+        providerLockEnabled &&
+        hasOneLockedProvider
+*/
+```
+
+This example illustrates the detail level, not a policy to copy into other projects. Verify the claimed upstream provenance in the actual code. If a new helper produces the key data, give its outputs their own derivation section; its signature alone does not close the design. Keep the flow readable by referencing that section, not by inlining a deeply nested trace.
+
+Before review, trace each new name backward to its source and forward to its consumer. Check that new helper outputs and changed existing outputs are explained, including any changed query/filter scope. An unknown formula or source is `UNRESOLVED` and blocks approval of that behavior; do not invent a choice or hide it behind a name such as `infer`, `resolve`, or `validate`. The design should expose enough logic to audit the change without writing the production implementation.
 
 ### Proposed contracts next
 
@@ -105,13 +141,19 @@ After the flows, package clause, and necessary imports, group declarations under
 
 Write valid Go, not Go-like pseudocode. Use structs, named types, constants without computation, existing or justified interface contracts, and function types for standalone functions. A function type describes a proposed signature; it does not require the implementation to use a function-valued type. For methods, preserve the receiver's ownership in a short source comment and use an interface only when that interface is part of the actual proposal.
 
-The actual Go declarations outside flow comments must have no function bodies, stub returns, panic placeholders, algorithms, loops, queries, library plumbing, generated code, or executable initializers. Pseudocode calls and guard clauses are allowed only inside the flow comments. No Markdown tables, headings, fences, HTML, or Mermaid. Do not put literal `+`/`-` change markers in Go source. Review diffs supply those markers.
+The actual Go declarations outside flow comments must have no function bodies, stub returns, panic placeholders, algorithms, loops, queries, library plumbing, generated code, or executable initializers. Pseudocode calls, guard clauses, and new derivation logic are allowed inside flow/derivation comments only. No Markdown tables, headings, fences, HTML, or Mermaid. Do not put literal `+`/`-` change markers in Go source. Review diffs supply those markers.
 
 Include only affected contracts and enough unchanged fields within changed types to explain the impact:
 
-- Short source labels with the real file and symbol. For changed types, add a compact field/signature delta such as `Add: EffectiveRows []Row` or `Change: Limit int -> *int` before the declaration. Put removed symbols or fields in explicit removal labels; omissions from a partial model are not removals.
+- Short source labels with the real file and symbol. Use the contract groups and named derivations to identify the affected fields. Keep removed symbols in the removal group; omissions from a partial model are not removals. Do not add prose explaining what changed or why.
 - Go input, output, pointer, slice, and error types. Preserve nil-versus-empty and other distinctions that affect correctness. Do not introduce fake embedded base structs or wrapper types just to distinguish old and new fields.
 - Short invariant comments only where types cannot express the requirement. Put `UNRESOLVED: name = choice A | choice B` beside the affected contract and ask the question in chat. Do not disguise paragraphs as fake structs or string constants.
+
+### Apply the comment rules
+
+Read `/skill:comment` when available and apply it to explanatory comments in both design files. Default to no explanatory comments. Keep only non-obvious invariants, opaque behavior, or deliberate deviations that the pseudocode and declarations cannot express. Describe what the code does, never its change history or tangential rationale. Remove comments that repeat an assignment, condition, field, or signature. No comments inside structs, including struct literals in pseudocode.
+
+The leading pseudocode block is the design itself, not commentary to delete. Keep concise flow/derivation headings, source labels, and contract-group labels for navigation. Keep unresolved decisions visible. Do not delete a safety requirement merely to reduce comments: express it in pseudocode or retain a short invariant when the design does not yet express it. Prefer code to explanatory paragraphs.
 
 ### Tooling support stays separate
 
@@ -121,7 +163,7 @@ Every referenced type must resolve. Use standard-library imports and inspected d
 
 Use `gofmt` on workspace Go files only. Aim for 100 columns, split long signatures and calls across lines, and accept Go's normal tab indentation. Keep metadata in chat or at the end of the file, never ahead of the flow.
 
-Before review, check plan coverage, Go syntax, type references, diagram consistency, and unresolved decisions. If Go is available, run `GOWORK=off GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off go test ./...` from the isolated design directory. Do not fetch modules or install tools. Use gopls diagnostics if available. If tooling is missing, report the unverified check rather than claim it passed. Passing these checks validates the proposal's declarations, not its behavior or compatibility with production implementations.
+Before review, check plan coverage, Go syntax, type references, flow consistency, derivation coverage, and unresolved decisions. If Go is available, run `GOWORK=off GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off go test ./...` from the isolated design directory. Do not fetch modules or install tools. Use gopls diagnostics if available. If tooling is missing, report the unverified check rather than claim it passed. Passing these checks validates the proposal's declarations, not its behavior or compatibility with production implementations.
 
 ## 5. Review and revise
 

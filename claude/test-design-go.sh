@@ -26,6 +26,8 @@ awk 'NR > 2 { if ($0 == "*/") exit; print }' design.go > flow.txt
 grep -Fq 'orderID, err := orderStore.Insert(' flow.txt
 grep -Fq 'if err != nil {' flow.txt
 grep -Fq 'return receipt, nil' flow.txt
+grep -Fq 'DERIVATION: receipt' flow.txt
+grep -Fq 'INPUTS:' flow.txt
 if grep -Eq '(->|<-|calls |;)' flow.txt; then
   echo 'Design flow must use spaced pseudocode, not compact arrow traces.' >&2
   exit 1

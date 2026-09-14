@@ -1,6 +1,8 @@
 /*
 FLOW: place an order
 
+	// INPUTS: ctx and command come from PlaceOrder. orderStore is its existing dependency.
+	// orderID and err come from the inspected OrderStore.Insert contract.
 	orderID, err := orderStore.Insert(
 		ctx,
 		command.CustomerID,
@@ -12,6 +14,7 @@ FLOW: place an order
 		return OrderReceipt{}, err
 	}
 
+	// DERIVATION: receipt
 	receipt := OrderReceipt{
 		OrderID: orderID,
 		Status:  "placed",
@@ -25,14 +28,14 @@ import "context"
 
 // ADDED CONTRACTS
 
-// Source: internal/orders/service.go.PlaceOrderCommand. Add all fields below.
+// Source: internal/orders/service.go.PlaceOrderCommand.
 type PlaceOrderCommand struct {
 	CustomerID     CustomerID
 	Items          []OrderItem
 	IdempotencyKey string
 }
 
-// Source: internal/orders/service.go.OrderReceipt. Add all fields below.
+// Source: internal/orders/service.go.OrderReceipt.
 type OrderReceipt struct {
 	OrderID OrderID
 	Status  string
@@ -41,8 +44,6 @@ type OrderReceipt struct {
 // CHANGED CONTRACTS
 
 // Source: internal/orders/service.go.PlaceOrder.
-// Signature delta: accept PlaceOrderCommand and return OrderReceipt plus error.
-// Function contract only; production code need not declare this function type.
 // Invariant: Items must be nonempty.
 // UNRESOLVED: duplicate_key = ReturnExistingReceipt | Conflict.
 type PlaceOrder func(
@@ -52,7 +53,4 @@ type PlaceOrder func(
 
 // REMOVED CONTRACTS
 
-// Source: internal/orders/legacy.go.SubmitRawOrder. Remove this function.
-
-// Plan: existing order-placement plan.
-// Repository revision: recorded in the design session.
+// internal/orders/legacy.go.SubmitRawOrder

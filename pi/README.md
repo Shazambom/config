@@ -159,6 +159,14 @@ are forbidden; a callee's interactions belong in a separate named flow. Added, c
 valid Go declarations without function bodies. Compact field/signature deltas make
 changes visible without comparing every existing field. No Markdown tables or fences.
 
+Every new field or variable needs a visible origin. Named `DERIVATION` sections
+show the actual predicates, transformations, construction, defaults, and consumers;
+a helper signature cannot stand in for the key logic. New logic may include loops
+or calculations inside the pseudocode comments. Unresolved derivations block approval.
+The comment rules apply throughout: no redundant narration, change history, rationale,
+or comments inside structs. Pseudocode and navigation labels stay; explanatory comments
+must state behavior that the code cannot express.
+
 Unchanged types and dependency stand-ins live separately in `support.go`, in the
 same package. They help gopls type-check the proposal; syntax coloring alone does
 not require them. Proposed changes must never be hidden in that file. KISS remains
