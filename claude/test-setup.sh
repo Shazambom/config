@@ -4,14 +4,12 @@ repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 test_dir="$(mktemp -d "${TMPDIR:-/tmp}/claude-setup-test.XXXXXX")"
 trap 'rm -rf "$test_dir"' EXIT
 export HOME="$test_dir/home"
-mkdir -p "$HOME" "$test_dir/bundle" "$test_dir/old/references"
+mkdir -p "$HOME" "$test_dir/bundle"
 cp -R "$repo/claude/." "$test_dir/bundle/"
-git -C "$repo" show d404be7653bdc50c60bdfcb679292d3458821001:claude/skills/design/SKILL.md > "$test_dir/old/SKILL.md"
-git -C "$repo" show d404be7653bdc50c60bdfcb679292d3458821001:claude/skills/design/references/document.md > "$test_dir/old/references/document.md"
+cp -R "$repo/claude/skills/design" "$test_dir/current-design"
 # A fixture update keeps this test independent of future bundled content.
 printf '\nFixture update\n' >> "$test_dir/bundle/skills/design/SKILL.md"
 target="$HOME/.claude/skills/design"
-backup="$HOME/.claude/design-skill-backup-d404be7"
 setup() { bash "$test_dir/bundle/setup.sh"; }
 reset_old() {
   rm -rf "$HOME/.claude"
@@ -33,9 +31,20 @@ expect_unchanged() {
 
 setup
 diff -r "$test_dir/bundle/skills/design" "$target"
-[[ ! -e "$backup" ]]
+[[ ! -e "$HOME/.claude/design-skill-backup-d404be7" ]]
+[[ ! -e "$HOME/.claude/design-skill-backup-09ec53b" ]]
 setup
 diff -r "$test_dir/bundle/skills/design" "$target"
+
+while read -r revision document; do
+version="${revision:0:7}"
+backup="$HOME/.claude/design-skill-backup-$version"
+rm -rf "$test_dir/old" "$test_dir/bundle/skills/design"
+mkdir -p "$test_dir/old/references"
+git -C "$repo" show "$revision:claude/skills/design/SKILL.md" > "$test_dir/old/SKILL.md"
+git -C "$repo" show "$revision:claude/skills/design/$document" > "$test_dir/old/$document"
+cp -R "$test_dir/current-design" "$test_dir/bundle/skills/design"
+printf '\nFixture update\n' >> "$test_dir/bundle/skills/design/SKILL.md"
 
 reset_old
 setup
@@ -47,7 +56,7 @@ setup
 diff -r "$test_dir/old" "$backup/design"
 diff -r "$test_dir/bundle/skills/design" "$target"
 
-for file in SKILL.md references/document.md; do
+for file in SKILL.md "$document"; do
   reset_old
   printf '\nUser customization\n' >> "$target/$file"
   expect_unchanged
@@ -58,13 +67,13 @@ for extra in .custom references/extra.md empty-dir; do
   expect_unchanged
 done
 reset_old
-rm "$target/references/document.md"
+rm "$target/$document"
 expect_unchanged
 
 # Symlinks, including dangling ones, must never qualify for migration.
-for link in SKILL.md references/document.md references; do
+for link in SKILL.md "$document" references; do
   reset_old
-  rm -rf "$target/$link"
+  rm -rf "${target:?}/$link"
   ln -s "$test_dir/old/$link" "$target/$link"
   setup
   [[ -L "$target/$link" && ! -e "$backup" ]]
@@ -105,6 +114,7 @@ for kind in directory file symlink; do
     symlink) ln -s "$test_dir/missing" "$backup" ;;
   esac
   setup
+  setup
   diff -r "$test_dir/old" "$target"
   case "$kind" in
     directory) [[ -d "$backup" && -z "$(ls -A "$backup")" ]] ;;
@@ -118,4 +128,8 @@ reset_old
 rm -rf "$test_dir/bundle/skills/design"
 cp -R "$test_dir/old" "$test_dir/bundle/skills/design"
 expect_unchanged
-printf '%s\n' 'PASS: fresh seed, exact design migration, private backup, customizations, symlinks, backup conflicts and idempotence.'
+done <<'BUNDLES'
+d404be7653bdc50c60bdfcb679292d3458821001 references/document.md
+09ec53b4ff4330d598ed2b719045b06262be450c references/document.txt
+BUNDLES
+printf '%s\n' 'PASS: fresh seed, both exact design migrations, private backups, customizations, symlinks, backup conflicts and idempotence.'

@@ -4,9 +4,9 @@
 loads them. Existing command files and entire existing skill directories are
 skipped, including symlinks. Local edits and deletions within an installed skill
 stay intact. To opt into a bundled update, move that global command or skill
-aside and rerun init. Setup does not synchronize edits back into this repository. The exact bundled
-external-temp version of `design` is archived outside skill discovery and replaced
-through seeding; customized directories remain untouched.
+aside and rerun init. Setup does not synchronize edits back into this repository.
+Exact known Markdown, plain-text, and prior Go versions of `design` are archived
+outside skill discovery before seeding the updated skill; customized directories remain untouched.
 
 ## Sources
 
@@ -21,8 +21,12 @@ through seeding; customized directories remain untouched.
   project directory, preferring an existing scratch directory and creating `.design/`
   with an ignore rule only when needed. It revises files through review comments
   or direct edits and waits for explicit implementation approval. Generated
-  `design.txt` files use plain-text contracts and ASCII diagrams, not Markdown.
-  Its example lives in `skills/design/references/document.txt`.
+  `design.go` starts with spaced-out Go pseudocode calls, followed by added, changed,
+  and removed Go contracts. Unchanged gopls stand-ins live in `support.go`.
+  `/view design.go` is the default review entry point. KISS governs the proposal.
+  An isolated `go.mod` supports gopls; package snapshots use `.txt` suffixes.
+  Templates live in `skills/design/references/design.go.txt` and `support.go.txt`.
+  Run `bash claude/test-design-go.sh` to check it with installed Go and gopls.
 
 There were no destination name collisions in this snapshot. Only skills and
 commands were imported, not Claude settings, sessions, credentials, or MCP config.

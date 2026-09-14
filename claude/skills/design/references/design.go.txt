@@ -1,0 +1,58 @@
+/*
+FLOW: place an order
+
+	orderID, err := orderStore.Insert(
+		ctx,
+		command.CustomerID,
+		command.Items,
+		command.IdempotencyKey,
+	)
+
+	if err != nil {
+		return OrderReceipt{}, err
+	}
+
+	receipt := OrderReceipt{
+		OrderID: orderID,
+		Status:  "placed",
+	}
+
+	return receipt, nil
+*/
+package design
+
+import "context"
+
+// ADDED CONTRACTS
+
+// Source: internal/orders/service.go.PlaceOrderCommand. Add all fields below.
+type PlaceOrderCommand struct {
+	CustomerID     CustomerID
+	Items          []OrderItem
+	IdempotencyKey string
+}
+
+// Source: internal/orders/service.go.OrderReceipt. Add all fields below.
+type OrderReceipt struct {
+	OrderID OrderID
+	Status  string
+}
+
+// CHANGED CONTRACTS
+
+// Source: internal/orders/service.go.PlaceOrder.
+// Signature delta: accept PlaceOrderCommand and return OrderReceipt plus error.
+// Function contract only; production code need not declare this function type.
+// Invariant: Items must be nonempty.
+// UNRESOLVED: duplicate_key = ReturnExistingReceipt | Conflict.
+type PlaceOrder func(
+	ctx context.Context,
+	command PlaceOrderCommand,
+) (receipt OrderReceipt, err error)
+
+// REMOVED CONTRACTS
+
+// Source: internal/orders/legacy.go.SubmitRawOrder. Remove this function.
+
+// Plan: existing order-placement plan.
+// Repository revision: recorded in the design session.

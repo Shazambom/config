@@ -146,34 +146,48 @@ Review skills before running them: they can direct shell execution.
 ## Design sessions
 
 Run `/skill:design <existing plan or plan reference>` before implementation.
-The skill reads the affected code and drafts `design.txt` in a private session
+The skill reads the affected code and drafts `design.go` in a private session
 subdirectory of a verified Git-ignored project directory. It first looks for a
 suitable existing scratch directory. If none exists, it may create `.design/`
 and add `/.design/` to the root `.gitignore`. It checks the actual file paths with
 `git check-ignore` and verifies they are untracked; directory names are not proof.
-The document is plain text, with structs, function signatures, `+`/`-` change
-markers, and ASCII data-flow diagrams. There are no Markdown tables, headings,
-code fences, or function bodies. Lines target 100 columns, with multiline
-signatures and vertical diagrams for comfortable Vim editing. Missing decisions
-appear as `UNRESOLVED` declarations.
+`design.go` starts with spacious Go-shaped pseudocode in a block comment, before
+the package clause. Each call captures named results, multiline calls put one
+argument on each line, and blank lines separate calls, mappings, guards, and returns.
+Short early-return guards show errors. Dense arrow chains and deeply nested traces
+are forbidden; a callee's interactions belong in a separate named flow. Added, changed, and removed contracts follow in clear sections, using
+valid Go declarations without function bodies. Compact field/signature deltas make
+changes visible without comparing every existing field. No Markdown tables or fences.
 
-The agent gives you concrete `/diff --no-index -- <snapshot> <design.txt>` and
-`/view <design.txt>` commands. `/diff` collects comments; Enter queues them as
-steering feedback. It does not directly edit the file. You can also edit the
-working document in Neovim. Each revision preserves an immutable review snapshot,
-and the agent re-reads your edits before applying feedback.
+Unchanged types and dependency stand-ins live separately in `support.go`, in the
+same package. They help gopls type-check the proposal; syntax coloring alone does
+not require them. Proposed changes must never be hidden in that file. KISS remains
+explicit: use the simplest correct design, without speculative abstractions.
+
+A design-local `go.mod` isolates the package. Every revision snapshots the whole
+package under `snapshots/revision-NNN/`, with `.txt` suffixes so old Go declarations
+and module files are not loaded. The agent checks syntax and types without fetching
+dependencies. Those checks do not validate the flow comments, prove behavior, or
+establish production compatibility.
+
+The agent gives you `/view <path>/design.go` for every review round. `/view` opens
+ignored files and collects comments; Enter queues feedback as a steering message.
+You can also edit `design.go` in Neovim. The agent re-reads direct edits before
+applying feedback and saves each presented revision as an immutable snapshot.
+Revision comparisons with `/diff --no-index` are optional, on request.
 
 Only an explicit instruction such as "Implement this design" authorizes code
 changes to match the reviewed revision. Submitting comments or closing the review
 does not. This is a skill instruction, not a tool permission sandbox. Design files
 stay ignored and are never staged or committed. The skill may add a workspace
 ignore rule before approval, but leaves it unstaged and reports the change.
-Bare `/diff` omits ignored files; use the supplied `--no-index` comparison or `/view`.
+Bare `/diff` omits ignored files; `/view` is the default design review command.
 Pi sessions and the existing review-comment cache can still retain excerpts.
 
 Sources live in `claude/skills/design/` and deploy through `init.sh --pi`.
-Setup preserves customized global skills. It migrates the exact bundled external-temp
-version by archiving it outside skill discovery before seeding the updated skill.
+Setup preserves customized global skills. It archives exact known Markdown,
+plain-text, and prior Go bundles outside discovery before seeding the updated skill.
+`bash claude/test-design-go.sh` checks the example with Go and gopls when installed.
 
 ## Installed extensions
 

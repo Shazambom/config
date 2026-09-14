@@ -1,0 +1,25 @@
+package design
+
+import "context"
+
+// TOOLING SUPPORT ONLY - NOT PROPOSED CHANGES
+// Omitted fields are not removals. Keep this file in the same package as design.go.
+
+// Source: internal/orders/types.go.
+type CustomerID string
+type OrderID string
+
+type OrderItem struct {
+	ProductID string
+	Quantity  int
+}
+
+// Source: internal/orders/store.go.OrderStore. Existing interface, unchanged.
+type OrderStore interface {
+	Insert(
+		ctx context.Context,
+		customerID CustomerID,
+		items []OrderItem,
+		idempotencyKey string,
+	) (OrderID, error)
+}

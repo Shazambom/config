@@ -6,37 +6,51 @@ mkdir -p "$destination/skills" "$destination/commands"
 
 migrate_bundled_design() {
   local target="$destination/skills/design"
-  local backup="$destination/design-skill-backup-d404be7"
-  local entry count=0 digest
+  local backup version document skill_hash document_hash support_hash
+  local entry count=0 expected=3 digest
+  local -a hash_command
   [[ ! -L "$destination" && ! -L "$destination/skills" ]] || return 0
   [[ -d "$target" && ! -L "$target" ]] || return 0
+  [[ -f "$target/SKILL.md" && ! -L "$target/SKILL.md" ]] || return 0
+  if command -v shasum >/dev/null 2>&1; then
+    hash_command=(shasum -a 256)
+  elif command -v sha256sum >/dev/null 2>&1; then
+    hash_command=(sha256sum)
+  else
+    return 0
+  fi
+  digest="$("${hash_command[@]}" < "$target/SKILL.md")" || return 0
+  while read -r version document skill_hash document_hash support_hash; do
+    [[ "${digest%% *}" != "$skill_hash" ]] || break
+  done <<'BUNDLES'
+d404be7 references/document.md 398d2e07b4f43c637e85f1d86f1e5b095574c5d1545143ec0a63a16301d6390a bc4cae697d1d7d85de35172f1ba11c5118b0d08b61720e4cde5f27c7a30b6373
+09ec53b references/document.txt 6ebcb7575b4bb93b51752946ccdf815c418dc501c55d97550cad75a4d00562bb 88778548c6e54f548bffce803e5379ea9e8216cc9d81fb4812f423b80b97aff3
+go-contracts-v1 references/design.go.txt cda433c97cc8ff47c3b21b75f5363525dd98567ad8d8b53ddf27c5f20545f4d1 b81e2a8bb59fdc0730c902cfeabcc3deb095e542be2805b1468d10017e011747
+flow-first-v1 references/design.go.txt 02cb99d025d6e58a3a692a58e9d89b7a12cabda3f6d561f39e1ad67154eccf64 5cdd415093d2b83fbb6dd14f6a5be490009b9b7238346712c312a0a730dc05b6 d92f099440ba8791b3d10e5ad3615770c37389baf9b27b253d696355b734b2cd
+BUNDLES
+  [[ "${digest%% *}" == "$skill_hash" ]] || return 0
+  backup="$destination/design-skill-backup-$version"
   [[ ! -e "$backup" && ! -L "$backup" ]] || return 0
-  # Only the exact two-file bundle from d404be7 qualifies for this migration.
+  [[ -z "$support_hash" ]] || expected=4
   while IFS= read -r -d '' entry; do
     [[ ! -L "$entry" ]] || return 0
     case "${entry#"$target/"}" in
-      SKILL.md|references/document.md) [[ -f "$entry" ]] || return 0 ;;
+      SKILL.md|"$document") [[ -f "$entry" ]] || return 0 ;;
+      references/support.go.txt) [[ -n "$support_hash" && -f "$entry" ]] || return 0 ;;
       references) [[ -d "$entry" ]] || return 0 ;;
       *) return 0 ;;
     esac
     count=$((count + 1))
   done < <(find "$target" -mindepth 1 -print0)
-  [[ "$count" == 3 ]] || return 0
-  if command -v shasum >/dev/null 2>&1; then
-    digest="$(shasum -a 256 < "$target/SKILL.md")" || return 0
-    [[ "${digest%% *}" == 398d2e07b4f43c637e85f1d86f1e5b095574c5d1545143ec0a63a16301d6390a ]] || return 0
-    digest="$(shasum -a 256 < "$target/references/document.md")" || return 0
-  elif command -v sha256sum >/dev/null 2>&1; then
-    digest="$(sha256sum < "$target/SKILL.md")" || return 0
-    [[ "${digest%% *}" == 398d2e07b4f43c637e85f1d86f1e5b095574c5d1545143ec0a63a16301d6390a ]] || return 0
-    digest="$(sha256sum < "$target/references/document.md")" || return 0
-  else
-    return 0
+  [[ "$count" == "$expected" ]] || return 0
+  digest="$("${hash_command[@]}" < "$target/$document")" || return 0
+  [[ "${digest%% *}" == "$document_hash" ]] || return 0
+  if [[ -n "$support_hash" ]]; then
+    digest="$("${hash_command[@]}" < "$target/references/support.go.txt")" || return 0
+    [[ "${digest%% *}" == "$support_hash" ]] || return 0
   fi
-  [[ "${digest%% *}" == bc4cae697d1d7d85de35172f1ba11c5118b0d08b61720e4cde5f27c7a30b6373 ]] || return 0
   [[ -f "$source_root/skills/design/SKILL.md" ]] || return 0
-  if cmp -s "$target/SKILL.md" "$source_root/skills/design/SKILL.md" &&
-    cmp -s "$target/references/document.md" "$source_root/skills/design/references/document.md"; then
+  if diff -qr "$target" "$source_root/skills/design" >/dev/null; then
     return 0
   fi
   # mkdir reserves a private backup outside skill discovery; never reuse one.
