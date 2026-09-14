@@ -16,11 +16,21 @@ cp "$repo/pi/node_modules/@latentminds/pi-quotas/src/providers/fetch.ts" "$test_
 "$repo/init.sh" --pi
 cmp "$test_dir/fetch-before.ts" "$repo/pi/node_modules/@latentminds/pi-quotas/src/providers/fetch.ts"
 cmp "$test_dir/auth-before.json" "$PI_CODING_AGENT_DIR/auth.json"
-node "$repo/pi/tests/quotas-fixture.mjs" "${1:-$repo/pi/node_modules/@earendil-works/pi-coding-agent}" > "$test_dir/quotas.log" 2>&1 &
+runtime="${1:-$repo/pi/node_modules/@earendil-works/pi-coding-agent}"
+node "$repo/pi/tests/quotas-fixture.mjs" "$runtime" > "$test_dir/quotas.log" 2>&1 &
 fixture_pid=$!
 start_deadline "$fixture_pid" 60
 wait "$fixture_pid" || fail 'Quota fixture failed or timed out'
 stop_deadline
 grep '^PASS:' "$test_dir/quotas.log" || fail 'Missing quota fixture completion'
+node "$runtime/dist/bundle/cli.js" --offline --no-extensions \
+  -e "$repo/pi/tests/quotas-bundle-fixture.ts" --no-skills --no-prompt-templates \
+  --no-themes --no-context-files --no-session --no-tools -p /quota-bundle-fixture \
+  > "$test_dir/quotas-bundle.log" 2>&1 &
+fixture_pid=$!
+start_deadline "$fixture_pid" 60
+wait "$fixture_pid" || fail 'Bundled quota fixture failed or timed out'
+stop_deadline
+grep '^PASS:' "$test_dir/quotas-bundle.log" || fail 'Missing bundled quota fixture completion'
 cmp "$test_dir/auth-before.json" "$PI_CODING_AGENT_DIR/auth.json"
 [[ ! -e "$HOME/.pi/agent/extensions/quotas.json" && ! -e "$PI_CODING_AGENT_DIR/extensions/quotas.json" ]] || fail 'Quota extension unexpectedly wrote feature config'

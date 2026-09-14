@@ -9,6 +9,9 @@ const { ModelRuntime, ModelRegistry, createEventBus } = await import(pathToFileU
 const { loadExtensions } = await import(pathToFileURL(join(runtimeDir, 'dist/core/extensions/loader.js')));
 const { visibleWidth } = await import('@earendil-works/pi-tui');
 const wrapper = fileURLToPath(new URL('../overrides/quotas.ts', import.meta.url));
+const commandSource = readFileSync(new URL('../node_modules/@latentminds/pi-quotas/src/extensions/command-quotas/command.ts', import.meta.url), 'utf8');
+assert(!commandSource.includes('export async function openQuotaView'), 'Regression fixture must run without the patched helper export');
+assert(!readFileSync(wrapper, 'utf8').includes('command-quotas/command.ts'), 'Wrapper must not depend on the private command helper');
 const calls = [];
 let responseMode = 'success';
 const reset = '2030-01-02T00:00:00Z';

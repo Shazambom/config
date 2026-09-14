@@ -169,7 +169,8 @@ five minutes for Anthropic and one minute for Codex; `r` bypasses the cache.
 Missing subscriptions and authentication errors remain visible. These are
 account-wide provider quotas, not this conversation's token count or billing.
 
-`pi/overrides/quotas.ts` loads only the upstream dashboard and fetch helpers.
+`pi/overrides/quotas.ts` owns the dashboard lifecycle and uses upstream's exported
+`QuotasComponent` and fetch helpers. It does not import the private command helper.
 The package's footer, warning notifications, token-history scanner, settings
 command, and other provider commands are not enabled. Nothing polls in the
 background. Commands refuse print, JSON, RPC, subagent, and memory-worker
@@ -186,8 +187,8 @@ through its normal auth flow. No model completion is requested. Direct Anthropic
 API keys cannot report subscription usage; use `/login` with a subscription.
 
 `pi/patches/quotas.patch` adapts the imported modules to the
-`@earendil-works` namespace, exposes the dashboard helper, truncates its help
-line on narrow terminals, and suppresses raw HTTP bodies and unexpected error
+`@earendil-works` namespace, truncates the dashboard's help line on narrow
+terminals, and suppresses raw HTTP bodies and unexpected error
 text. HTTP failures retain their status code. Setup reapplies the patch from a
 preserved upstream source copy. TypeScript is needed for the upstream extension
 API; installation and test orchestration use Bash.
@@ -195,9 +196,12 @@ API; installation and test orchestration use Bash.
 Run `./pi/test-quotas.sh` for isolated deployment and mocked Anthropic/Codex
 checks. An optional Pi package directory tests another installed runtime, for
 example `./pi/test-quotas.sh /path/to/global/node_modules/@earendil-works/pi-coding-agent`.
-The fixture uses the real extension loader and auth registry, checks refresh,
-error redaction, noninteractive guards, and dashboard rendering without paid
-calls or real credentials. Live account access and OAuth refresh are not tested.
+The fixtures exercise both the SDK extension loader and `dist/bundle/cli.js`,
+using the real auth registry with fake credentials. They check both aliases,
+refresh, error redaction, noninteractive guards, dashboard rendering, and closing
+while a request is pending. The bundled CLI test invokes a fixture command with
+an in-memory UI, not a live terminal. No paid calls or real credentials are used.
+Live account access and OAuth refresh are not tested.
 Upstream 0.5.0's provider parsing remains unchanged; Anthropic 429 handling and
 additional scoped quota windows from open upstream PRs are not included.
 
