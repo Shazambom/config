@@ -270,7 +270,9 @@ this package to an existing session; then use:
 /diff h                    # Shortcut for /diff HEAD, also excludes untracked files
 /diff --                   # Unstaged tracked changes only
 /diff --cached             # Staged changes only
+/diff --all-files          # Include tests and generated files
 /view path/to/new-file.go  # Inspect a new/untracked file
+/view --all-files path     # Include tests and generated files
 ```
 
 Bare `/diff` shows the net tracked changes against the merge base of `main` and
@@ -287,19 +289,44 @@ control characters; those untracked paths produce an error rather than an
 incorrect review. The combined diff has a 128 MiB limit. Submodule contents are
 not expanded; review inside the submodule for its file changes.
 
-Explicit Git arguments keep upstream behavior and omit untracked files.
-For production-focused review, pass Git exclusion pathspecs. For example:
+Both commands hide conventional test files and generated output by default,
+including when a hidden file is explicitly requested. A notice reports the number
+of files hidden by category. This filters the review only: files stay tracked,
+unchanged, and available to builds and tests.
+
+Put `--all-files` immediately after the command to disable this filtering:
 
 ```text
-/diff HEAD -- . ':(exclude,glob)**/*_test.go' ':(exclude,glob)**/*.test.*' ':(exclude,glob)**/*.spec.*' ':(exclude,glob)**/tests/**' ':(exclude,glob)**/__tests__/**'
+/diff --all-files HEAD
+/diff --all-files --cached
+/view --all-files path/to/example_test.go
 ```
 
-These exclusions are per invocation, **not an automatic default**. Adjust for
-your project's test/fixture layout; `/diff HEAD` shows all tracked changes again.
-Keep runtime config, migrations, scripts, and dependency changes in review.
-Explicit Git diffs omit untracked files: use bare `/diff` or `/view` for new
-files. Do not stage files just to expose them. Explicit `HEAD` requires an initial
-commit. Branch ranges such as `/diff main...HEAD` show committed changes only.
+Test detection uses filename and directory conventions across languages. It is
+heuristic, not a test-runner invocation; tests embedded in production files stay
+visible. Generated detection recognizes generator comment headers, including Go's
+`// Code generated … DO NOT EDIT.` convention used by sqlc, mockery, and Wire.
+A generator directive such as `//go:generate` does not mark a file as generated.
+SQL queries, schemas, Wire injector definitions, and generator configuration remain
+visible unless separately classified as tests or explicitly marked generated.
+
+The filter honors Git's `linguist-generated` attribute. Set it for project-specific
+outputs, or unset it to override generated-code detection for a hand-written file.
+It does not write `.gitattributes` or `.gitignore` for you. Generated detection uses
+the reviewed version of a file, not an unrelated working-tree version. Files stay
+visible when bounded reads cannot establish their classification, including pure
+renames or mode-only diffs without recoverable headers. For example:
+
+```gitattributes
+custom-output/** linguist-generated
+custom-output/manual.go -linguist-generated
+```
+
+After the leading review option, explicit Git arguments retain their meaning and
+omit untracked files. Use bare `/diff` or `/view` for new files; do not stage files
+just to expose them. Explicit `HEAD` requires an initial commit. Branch ranges such
+as `/diff main...HEAD` show committed changes only. Use `--all-files` for a complete
+review, including runtime changes that a naming heuristic might misclassify.
 
 Keys: `v` switches unified/split view, `n/p` moves between hunks, `c` comments,
 `J/K` extends a selection, `Enter` **sends comments to Pi** (which can trigger
@@ -312,7 +339,8 @@ tracking with `M`, using the complete diff when no Git arguments are supplied.
 `pi/overrides/diff-source.ts` adapts the pinned package's TypeScript source API.
 `init.sh --pi` preserves the upstream module and deploys this adapter into the
 local package. Setup checks the upstream SHA-256 and refuses an incompatible
-update. Comments and explicit-argument handling stay upstream.
+update. The review filter sits alongside the source and UI adapters; ordinary
+Git argument handling remains upstream.
 TypeScript is used here because the package imports this module directly.
 
 `pi/overrides/diff-ui.ts` and `pi/patches/diff-review-ui.patch` keep `/diff` and

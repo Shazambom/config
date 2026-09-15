@@ -79,7 +79,9 @@ if [[ ! -f "$review_dir/component-upstream.ts" ]]; then
 fi
 cp "$review_dir/component-upstream.ts" "$stage/component.ts"
 cp "$review_root/index-upstream.ts" "$stage/index.ts"
-(cd "$stage"; git apply "$repo/pi/patches/diff-review-colors.patch"; git apply "$repo/pi/patches/diff-review-ui.patch")
+(cd "$stage"; git apply "$repo/pi/patches/diff-review-colors.patch"; git apply "$repo/pi/patches/diff-review-ui.patch"; git apply "$repo/pi/patches/diff-review-filter.patch")
+cp "$repo/pi/overrides/diff-filter.ts" "$stage/diff-filter.ts"
+mv "$stage/diff-filter.ts" "$review_root/diff-filter.ts"
 cp "$repo/pi/overrides/diff-ui.ts" "$stage/diff-ui.ts"
 mv "$stage/diff-ui.ts" "$review_root/diff-ui.ts"
 mv "$stage/index.ts" "$review_root/index.ts"

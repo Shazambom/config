@@ -1,0 +1,82 @@
+--- a/index.ts
++++ b/index.ts
+@@ -1,3 +1,4 @@
++import { filterReview, reviewOptions } from "./diff-filter.ts";
+ import { createHash } from "node:crypto";
+ import type {
+   ExtensionAPI,
+@@ -41,10 +42,11 @@
+   pi.registerCommand("diff", {
+     description: "Review a git diff in a custom TUI (/diff [git diff args])",
+     handler: async (args: string, ctx: ExtensionCommandContext) => {
++      const filtering = reviewOptions(args);
+       let source;
+       let diffText: string;
+       try {
+-        source = parseDiffSource(args);
++        source = parseDiffSource(filtering.args);
+         diffText = getDiff(ctx.cwd, source);
+       } catch (error) {
+         const message = error instanceof Error ? error.message : String(error);
+@@ -57,9 +59,15 @@
+         return;
+       }
+ 
+-      const reviewLines = parseDiff(diffText);
++      const filtered = filterReview(ctx.cwd, parseDiff(diffText), "diff", filtering.allFiles);
++      const reviewLines = filtered.lines;
++      if (filtered.summary) ctx.ui.notify(filtered.summary, "info");
++      if (filtered.summary && !reviewLines.some(line => line.filePath)) {
++        ctx.ui.notify("No files remain after review filtering. Use /diff --all-files to review all changes.", "info");
++        return;
++      }
+       const turnBasedScopeKey = source.turnBased
+-        ? getReviewScopeKey(ctx.cwd, source.args)
++        ? getReviewScopeKey(ctx.cwd, [filtered.cacheMode, ...source.args])
+         : undefined;
+       if (turnBasedScopeKey) {
+         const previousLines = getLastReviewSnapshot(ctx, turnBasedScopeKey);
+@@ -79,7 +87,7 @@
+       await openReview(pi, ctx, {
+         title: source.label,
+         promptLabel: source.promptLabel,
+-        cacheKey: getReviewCacheKey(ctx.cwd, source.label, diffText),
++        cacheKey: getReviewCacheKey(ctx.cwd, `${source.label}\0${filtered.cacheMode}`, JSON.stringify(reviewLines)),
+         reviewLines,
+         markReviewed:
+           turnBasedScopeKey == null
+@@ -98,10 +106,11 @@
+     description:
+       "Review one or more files or folders in a custom TUI (/view <paths...>)",
+     handler: async (args: string, ctx: ExtensionCommandContext) => {
++      const filtering = reviewOptions(args);
+       let source;
+       let files: string[];
+       try {
+-        source = parseViewSource(args);
++        source = parseViewSource(filtering.args.replace(/^\s*--(?:\s+|$)/, ""));
+         files = resolveViewFiles(ctx.cwd, source);
+       } catch (error) {
+         const message = error instanceof Error ? error.message : String(error);
+@@ -118,13 +127,18 @@
+       }
+ 
+       const workspaceStore = new WorkspaceCommentStore(ctx.cwd);
+-      const reviewLines = parseViewFiles(workspaceStore.rootPath, files);
+-      const contentKey = reviewLines.map((line) => line.text).join("\n");
++      const filtered = filterReview(ctx.cwd, parseViewFiles(workspaceStore.rootPath, files), "view", filtering.allFiles);
++      const reviewLines = filtered.lines;
++      if (filtered.summary) ctx.ui.notify(filtered.summary, "info");
++      if (filtered.summary && !reviewLines.some(line => line.filePath)) {
++        ctx.ui.notify("No files remain after review filtering. Use /view --all-files <paths> to include them.", "info");
++        return;
++      }
+ 
+       await openReview(pi, ctx, {
+         title: source.label,
+         promptLabel: source.promptLabel,
+-        cacheKey: getReviewCacheKey(ctx.cwd, source.label, contentKey),
++        cacheKey: getReviewCacheKey(ctx.cwd, `${source.label}\0${filtered.cacheMode}`, JSON.stringify(reviewLines)),
+         reviewLines,
+         workspaceStore,
+         buildPrompt: (comments) =>

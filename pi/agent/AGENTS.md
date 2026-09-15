@@ -68,9 +68,14 @@ another substantial change. Prefer actual diffs to repeating whole files in chat
 Production includes runtime configuration, dependencies, migrations, and scripts;
 keep test-only changes summarized unless the user asks to inspect them.
 
-Suggest /diff for the complete branch/worktree review, including non-ignored
-untracked files. The portable default compares against the merge base with main
-or origin/main, falling back to HEAD with a labeled title if neither exists.
+Suggest /diff for production-focused branch/worktree review, including non-ignored
+untracked files. Both /diff and /view hide conventional tests and generated files
+by default and report hidden counts. Use /diff --all-files for the complete review,
+or /view --all-files <path> to inspect a hidden file. Do not describe a filtered
+review as covering every change. Classification is heuristic; generator inputs
+and configuration should remain visible. The portable default compares against
+the merge base with main or origin/main, falling back to HEAD with a labeled title
+if neither exists.
 Explicit Git arguments retain standard behavior: /diff HEAD shows tracked edits
 since HEAD; path-filtered diffs omit untracked files, so flag those for /view.
 Filters affect the review view only; never hide files from Git or stage/commit
