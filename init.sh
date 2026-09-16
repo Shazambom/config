@@ -36,6 +36,10 @@ export CONFIG_PI_GLOBAL_PREFIX="$pi_global_prefix"
   ensure_pi_jq
   bash "$repo/pi/setup.sh"
   bash "$repo/tmux/setup.sh"
+  bash "$repo/iterm2/setup.sh"
+  if ! bash "$repo/iterm2/runtime.sh"; then
+    printf '%s\n' 'iTerm2 tab helper setup failed; Pi can still launch without repositioning.' >&2
+  fi
   if [[ "$CONFIG_PI_GLOBAL_NEEDS_NODE" == 1 ]]; then
     mkdir -p "$pi_global_prefix/bin"
     if [[ ! -e "$pi_global_prefix/bin/node" ]]; then

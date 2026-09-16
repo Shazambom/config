@@ -24,8 +24,9 @@ The Bash bootstrap downloads private, pinned Node.js 22.23.2 (including npm)
 and jq 1.8.1, verifies their repository-pinned SHA-256 checksums, then installs
 Pi and all npm dependencies.
 Later launches reuse the installed runtime and dependencies. Interactive launches
-open a new tmux session when outside tmux. Inside tmux, the launcher uses the
-current pane. Print/RPC modes do not open tmux.
+open a new tmux session when outside tmux. In iTerm2, the launcher uses native
+integration (`tmux -CC`); other terminals use the standard tmux UI. Inside tmux,
+the launcher uses the current pane. Print/RPC modes do not open tmux.
 
 Supported runtime: macOS and modern glibc Linux, arm64/x64, not Alpine/musl or
 native Windows. Downloads need Bash, Git, tar/gzip, curl or wget, and shasum or
@@ -396,11 +397,65 @@ not get automatic Git isolation or a filesystem security sandbox.
 
 Plain `pi` uses the auto-tmux `pi.sh` launcher. Interactive launches outside
 tmux create a session; launches inside tmux reuse the current pane. Print/RPC,
-help, version, and model-listing invocations bypass tmux. `Ctrl+b d` detaches; `tmux attach` returns.
+help, version, and model-listing invocations bypass tmux. iTerm2 uses native
+integration when `TERM_PROGRAM=iTerm.app`; existing tmux panes are not converted.
+In standard tmux, `Ctrl+b d` detaches and `tmux attach` returns.
 `pi/patches/interactive-subagents.patch` makes spawn and resume use the parent's
 Node executable and Pi entry point, independent of a new pane's shell PATH.
 
-### Tmux scrolling
+### iTerm2 selection and tmux integration
+
+Launch `pi` from a fresh iTerm2 tab outside tmux. The launcher starts `tmux -CC`:
+iTerm2 opens a native tab and automatically buries the original control tab.
+A short-lived helper captures the source tab before launch, identifies the new
+native tab by its tmux connection, and moves it to the original position. The
+control connection stays alive but out of the way.
+Native scrollback and text selection work normally: drag to select, press `Cmd+C`
+to copy, and `Cmd+V` to paste. No Option modifier is needed.
+
+On macOS, `init.sh --pi` runs `iterm2/setup.sh` to manage four iTerm2 preferences:
+`OpenTmuxWindowsIn=2`, `AutoHideTmuxClientSession=true`, `CopySelection=false`,
+and `EnableAPIServer=true`. These are application-wide preferences, not limited
+to Pi. Ordinary tab ordering and other preferences are left alone. Linux,
+isolated `CONFIG_PI_HOME` deployments, and externally managed iTerm2 preference
+folders skip preference changes.
+
+The helper uses iTerm2's supported Python API, so setup installs pinned dependencies
+from `iterm2/requirements.txt` in `~/.config/portable-pi/iterm2-venv`, using an
+available Python 3. This is the Python exception to the repository's Bash preference.
+No Python packages are installed globally. iTerm2's API can access terminal data;
+this helper reads layout/session metadata only and uses normal AppleScript authorization.
+It does not read terminal output, store API credentials, or bypass consent prompts.
+
+If the running app has not started its API server, toggle **Settings > General >
+Magic > Enable Python API** off and on. This activates the saved setting live;
+no restart is needed. The launcher falls back to native placement with a warning
+if the helper is unavailable. Split source tabs, concurrent launches in one window,
+or changed tab layouts are left alone rather than moving an uncertain target.
+The helper never moves tabs across windows and exits after at most 20 seconds.
+
+Use **Shell > tmux > Detach**
+to leave the session running. Reconnect from a normal iTerm2 tab with
+`tmux -CC attach -t <session>`; `tmux list-sessions` lists session names. Closing
+an integrated pane/tab can kill its tmux pane/window, so use Detach to preserve work.
+A `/reload` or a new Pi launch inside an existing conventional tmux pane does not
+switch that pane to native integration. Other terminals retain standard tmux.
+
+See [iTerm2's integration documentation](https://iterm2.com/documentation-tmux-integration.html).
+`bash pi/test-command.sh` checks launcher routing with real PTYs and a stub tmux.
+`bash iterm2/test.sh` checks preference writes and isolation, and
+`python3 iterm2/test_reorder.py` checks reorder guards with an offline API fixture.
+
+For a live debug environment, run `bash iterm2/test-live.sh`. It creates an isolated
+seven-tab iTerm2 window, launches the real launcher/helper with a fake Pi executable
+from tab 4, and checks native tab order and unchanged existing windows. It uses a
+private tmux server, makes no model calls, and cleans up its own window and files.
+Use `--position 1` or `--position 7` for edge positions. `--keep` leaves the test
+window and printed fixture directory/socket available for inspection. The live test
+requires API access and intentionally opens a temporary test window; it does not
+validate clipboard contents.
+
+### Standard tmux scrolling
 
 `init.sh --pi` deploys `tmux/tmux.conf` to `~/.config/portable-pi/tmux.conf`
 and adds one `source-file` line to `~/.tmux.conf`, preserving existing contents.

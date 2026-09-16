@@ -33,6 +33,12 @@ if [[ -z "${TMUX:-}" && -t 0 && -t 1 && "$headless" == false ]]; then
   for name in PATH PI_CODING_AGENT_DIR PI_BROWSER_PROFILE PLAYWRIGHT_BROWSERS_PATH GOOGLE_SEARCH_API_KEY GOOGLE_CSE_ID; do
     if printenv "$name" >/dev/null 2>&1; then environment+=(-e "$name=${!name}"); fi
   done
-  exec tmux new-session -c "$PWD" "${environment[@]}" -- "$pi_binary" "$@"
+  tmux_command=(tmux)
+  if [[ "${TERM_PROGRAM:-}" == iTerm.app ]]; then
+    source "$repo/iterm2/launch.sh"
+    iterm2_prepare_tab_reorder
+    tmux_command+=(-CC)
+  fi
+  exec "${tmux_command[@]}" new-session -c "$PWD" "${environment[@]}" -- "$pi_binary" "$@"
 fi
 exec "$pi_binary" "$@"

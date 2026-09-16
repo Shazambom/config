@@ -11,6 +11,8 @@ mkdir -p "$HOME" "$test_dir/bin" "$test_dir/package" "$test_dir/repo quote's/pi"
 fixture="$test_dir/repo quote's"
 cp "$repo/pi.sh" "$fixture/pi.sh"
 cp "$repo/pi/command-path.sh" "$repo/pi/install-command.sh" "$fixture/pi/"
+mkdir -p "$fixture/iterm2"
+cp "$repo/iterm2/launch.sh" "$fixture/iterm2/"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$fixture/init.sh"
 chmod +x "$fixture/init.sh"
 : > "$fixture/pi/runtime.sh"
@@ -46,18 +48,29 @@ run_tty() {
     *) printf -v tty_command 'bash %q' "$test_dir/tty.sh"; script -q -e -c "$tty_command" /dev/null >/dev/null ;;
   esac
 }
-run_tty 'pi "two words"'
-grep -qx tmux "$PI_TEST_LOG" || fail 'Interactive launch did not use tmux'
-grep -Fxq "$PI_TEST_REAL" "$PI_TEST_LOG" || fail 'tmux launched wrapper recursively'
-grep -Fxq 'two words' "$PI_TEST_LOG" || fail 'tmux lost arguments'
-run_tty 'TMUX=fixture pi "inside tmux"'
-grep -qx cli "$PI_TEST_LOG" || fail 'Nested tmux launch'
+for terminal in iTerm.app Apple_Terminal vscode ''; do
+  run_tty "TERM_PROGRAM='$terminal' pi 'two words'"
+  grep -qx tmux "$PI_TEST_LOG" || fail 'Interactive launch did not use tmux'
+  grep -Fxq "$PI_TEST_REAL" "$PI_TEST_LOG" || fail 'tmux launched wrapper recursively'
+  grep -Fxq 'two words' "$PI_TEST_LOG" || fail 'tmux lost arguments'
+  if [[ "$terminal" == iTerm.app ]]; then
+    awk 'NR == 3 { if ($0 != "-CC") exit 1 } NR == 4 { if ($0 != "new-session") exit 1 }' "$PI_TEST_LOG" || fail 'iTerm2 did not use native integration'
+  else
+    if grep -Fxq -- '-CC' "$PI_TEST_LOG"; then fail "Control mode used in $terminal"; fi
+  fi
+  run_tty "TERM_PROGRAM='$terminal' TMUX=fixture pi 'inside tmux'"
+  grep -qx cli "$PI_TEST_LOG" || fail 'Nested tmux launch'
+done
+run_tty 'unset TERM_PROGRAM; pi "no terminal identification"'
+if grep -Fxq -- '-CC' "$PI_TEST_LOG"; then fail 'Control mode used without terminal identification'; fi
+TERM_PROGRAM=iTerm.app pi 'noninteractive input' </dev/null
+grep -qx cli "$PI_TEST_LOG" || fail 'tmux used without a TTY'
 for args in '--help' '--version' '-p prompt' '--mode rpc' '--mode=json' '--list-models'; do
-  run_tty "pi $args"
+  run_tty "TERM_PROGRAM=iTerm.app pi $args"
   grep -qx cli "$PI_TEST_LOG" || fail "tmux used for $args"
 done
 rm "$PI_TEST_ENTRY"
 cp "$PI_TEST_REAL" "$PI_TEST_ENTRY"
 if bash "$fixture/pi/install-command.sh" "$PI_TEST_ENTRY" 2>/dev/null; then fail 'Overwrote unmanaged executable'; fi
 cmp "$PI_TEST_ENTRY" "$PI_TEST_REAL" || fail 'Unmanaged executable changed'
-printf '%s\n' 'PASS: executable wrapper, idempotence, CLI resolution, arguments/cwd, exit status, update repair, real TTY tmux routing and unmanaged-file protection.'
+printf '%s\n' 'PASS: executable wrapper, idempotence, CLI resolution, arguments/cwd, exit status, update repair, real TTY iTerm2/native and standard tmux routing, headless bypass and unmanaged-file protection.'
