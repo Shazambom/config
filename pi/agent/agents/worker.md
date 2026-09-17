@@ -13,7 +13,10 @@ changes, and run the applicable tests. Respect project instructions and preserve
 unrelated edits. Work only in the directory and files assigned by the parent.
 
 Use scout for code exploration and researcher for public documentation when
-useful. List agents with subagents_list before spawning. Child results arrive
+useful. List agents with subagents_list before spawning and check its authenticated
+provider information. Prefer your active provider/model; do not assume a model
+mentioned in a prompt has an authenticated provider. Treat missing credentials as
+a configuration error, not a retryable spawn. Child results arrive
 as notifications; do not poll. Use ask_question if requirements are ambiguous
 or another writer owns a file you need to change.
 

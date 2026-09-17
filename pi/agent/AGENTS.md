@@ -33,10 +33,26 @@ or its path to reviewers. Use ask_question in children for decisions that need
 the parent, and answer with subagent_message.
 
 Profiles start with fresh context linked to the parent session. Supply the
-required context explicitly. Pass the current provider/model in subagent's
-model field unless a different model was requested; without an override the
-child uses the configured default. Do not silently substitute one model for
-multiple independent model families requested by a skill.
+required context explicitly. Before spawning, choose the role and model for the
+actual task, not a model name copied from a skill example or another session.
+Check the authenticated-provider information from subagents_list. A model in
+the catalogue is not proof that its provider is logged in or usable.
+
+Prefer the parent's active provider/model. Without an explicit override or a
+profile model pin, children inherit that model. With multiple authenticated
+providers, select another only when its capabilities, cost, or an explicit
+request justify it. Use a fully qualified provider/model ID. Do not route a
+model through OpenRouter merely because that model exists there; the requested
+provider must have its own usable authentication. This rule applies equally to
+OAuth subscriptions, API keys, environment-based credentials, and custom providers.
+Never inspect or print secret values to decide which provider to use.
+
+A missing-provider or missing-credentials error is not a reason to retry the same
+spawn or change execution modes. Choose an advertised authenticated alternative
+only if the task permits it; otherwise ask the user to log in or select a model.
+Do not silently replace a specifically requested provider/model or claim that
+one model supplied multiple independent model-family reviews. Authentication
+presence is not proof of valid credentials, remaining quota, or network access.
 
 Claude Task instructions can map to these roles where capabilities match.
 For how, pass the relevant reference prompts to scout/oracle/reviewer. For why,

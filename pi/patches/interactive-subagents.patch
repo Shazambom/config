@@ -1,13 +1,143 @@
+diff --git a/pi-extension/subagents/index.ts b/pi-extension/subagents/index.ts
+index 7e20a0f..84d2832 100644
 --- a/pi-extension/subagents/index.ts
 +++ b/pi-extension/subagents/index.ts
-@@ -865,0 +866,4 @@
+@@ -2 +2,2 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
+-import { keyHint } from "@mariozechner/pi-coding-agent";
++import { keyHint, SessionManager } from "@mariozechner/pi-coding-agent";
++import { preflightModel, modelOptions } from "./model-preflight.ts";
+@@ -108 +109 @@ const SubagentParams = Type.Object({
+-  model: Type.Optional(Type.String({ description: "Model override (overrides agent default)" })),
++  model: Type.Optional(Type.String({ description: "Exact provider/model ID with configured credentials. Overrides the profile model; otherwise inherits the current parent model when the profile has no model. subagents_list reports parent credential-configured options. Missing credentials or unknown models fail without substitution." })),
+@@ -865,0 +867,4 @@ function applySandboxToParts(
 +    const skillDiscovery = join(loadout.agentDir ?? getAgentConfigDir(), "extensions", "claude-skills.ts");
 +    if (existsSync(skillDiscovery)) {
 +      parts.push("-e", shellEscape(skillDiscovery));
 +    }
-@@ -1318,1 +1322,1 @@
+@@ -1170 +1175 @@ async function launchSubagent(
+-  ctx: { sessionManager: { getSessionFile(): string | null; getSessionId(): string; getSessionDir(): string }; cwd: string },
++  ctx: ExtensionContext,
+@@ -1177 +1182 @@ async function launchSubagent(
+-  const effectiveModel = params.model ?? agentDefs?.model;
++  const effectiveModel = params.model;
+@@ -1318 +1323 @@ async function launchSubagent(
 -  const parts: string[] = ["pi"];
 +  const parts: string[] = [shellEscape(process.execPath), shellEscape(resolve(process.argv[1]))];
-@@ -2156,1 +2160,1 @@
+@@ -1760,0 +1766,3 @@ export default function subagentsExtension(pi: ExtensionAPI) {
++        const profileModel = loadAgentDefaults(params.agent)?.model;
++        params.model = await preflightModel(ctx, params.model ?? profileModel);
++
+@@ -1966 +1974 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+-      async execute() {
++      async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+@@ -1984 +1992 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+-          content: [{ type: "text", text: lines.join("\n") }],
++          content: [{ type: "text", text: lines.join("\n") + "\n\n" + modelOptions(ctx) }],
+@@ -2144,0 +2153,3 @@ export default function subagentsExtension(pi: ExtensionAPI) {
++        const savedModel = loadout.model ? undefined : SessionManager.open(sessionPath).buildSessionContext().model;
++        loadout.model = await preflightModel(ctx, loadout.model ?? (savedModel ? `${savedModel.provider}/${savedModel.modelId}` : ""));
++
+@@ -2156 +2167 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 -        const parts = ["pi", "--session", shellEscape(sessionPath)];
 +        const parts = [shellEscape(process.execPath), shellEscape(resolve(process.argv[1])), "--session", shellEscape(sessionPath)];
+diff --git a/pi-extension/subagents/model-preflight.ts b/pi-extension/subagents/model-preflight.ts
+new file mode 100644
+index 0000000..09abb30
+--- /dev/null
++++ b/pi-extension/subagents/model-preflight.ts
+@@ -0,0 +1,42 @@
++import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
++
++type ModelContext = Pick<ExtensionContext, "model" | "modelRegistry">;
++const modelName = (model: { provider: string; id: string }) => `${model.provider}/${model.id}`;
++
++export function modelOptions(ctx: ModelContext): string {
++  const models = ctx.modelRegistry.getAvailable();
++  const examples = new Map<string, string>();
++  if (ctx.model && models.some(m => modelName(m) === modelName(ctx.model!))) {
++    examples.set(ctx.model.provider, modelName(ctx.model));
++  }
++  for (const model of models) {
++    if (!examples.has(model.provider)) examples.set(model.provider, modelName(model));
++  }
++  return `Models with configured credentials in the parent runtime: ${[...examples.values()].slice(0, 12).join(", ") || "none"}. ` +
++    "These are credential-presence checks, not token or connectivity validation. Child credentials and provider extensions must also be available in its sandbox.";
++}
++
++export async function preflightModel(ctx: ModelContext, requested?: string | null): Promise<string> {
++  const name = requested ?? (ctx.model ? modelName(ctx.model) : "");
++  const models = ctx.modelRegistry.getAll();
++  const exact = models.find(model => modelName(model) === name);
++  const matches = exact ? [exact] : name.includes("/") ? [] : models.filter(model => model.id === name);
++  const model = matches.length === 1 ? matches[0] : undefined;
++  let reason = model ? "" : "unknown or ambiguous model; use an exact provider/model ID";
++  if (model) {
++    try {
++      // Provider-owned resolution supports stored keys, env, OAuth refresh and custom auth.
++      // Do not inspect, persist, or print the returned credentials or raw resolver errors.
++      if (!await ctx.modelRegistry.getProviderAuth(model.provider)) reason = "missing provider credentials";
++    } catch {
++      reason = "credential resolution failed; check login or credential configuration and retry";
++    }
++  }
++  if (reason) throw new Error(`Cannot launch subagent with ${JSON.stringify(name || "<no model>")}: ${reason}. Use /login for the requested provider or explicitly choose another model. ${modelOptions(ctx)}`);
++  return modelName(model!);
++}
++
++export function permanentProviderFailure(message: unknown): boolean {
++  if (typeof message !== "string") return false;
++  return /(?:\b(?:401|403)\b|\bunauthorized\b|\bforbidden\b|invalid[_ ]api[_ ]key|incorrect api key|authentication[_ ]error|no api key found|missing (?:api key|credentials)|provider is not configured|unknown provider|model .*not found|no model found|authHeader requires)/i.test(message);
++}
+diff --git a/pi-extension/subagents/subagent-done.ts b/pi-extension/subagents/subagent-done.ts
+index ba37f06..11f6e6e 100644
+--- a/pi-extension/subagents/subagent-done.ts
++++ b/pi-extension/subagents/subagent-done.ts
+@@ -15 +15 @@
+-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
++import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+@@ -19,0 +20 @@ import { createSubagentActivityRecorder } from "./activity.ts";
++import { preflightModel, permanentProviderFailure } from "./model-preflight.ts";
+@@ -178,0 +180,27 @@ export default function (pi: ExtensionAPI) {
++  let providerFailed = false;
++  let authResponseFailed = false;
++  let failureClosed = false;
++  function closeProviderFailure(ctx: ExtensionContext) {
++    if (failureClosed) return;
++    failureClosed = true;
++    const model = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "requested model";
++    const errorMessage = `Subagent provider authentication/configuration failed for ${model}. Check /login, model configuration, and credentials in the child environment. No automatic retry.`;
++    const sessionFile = process.env.PI_SUBAGENT_SESSION;
++    if (sessionFile) {
++      try { writeFileSync(`${sessionFile}.exit`, JSON.stringify({ type: "error", errorMessage, stopReason: "error" })); } catch {}
++    }
++    recorder.agentEndDone();
++    ctx.abort();
++    ctx.shutdown();
++  }
++
++  pi.on("message_end", (event, ctx) => {
++    const message = event.message;
++    if (!autoExit || message.role !== "assistant" || message.stopReason !== "error") return;
++    if (!authResponseFailed && !permanentProviderFailure(message.errorMessage)) return;
++    providerFailed = true;
++    closeProviderFailure(ctx);
++    // A permanent, sanitized error must not match Pi's transient retry patterns.
++    return { message: { ...message, errorMessage: "Provider authentication/configuration failed. Check /login and model configuration." } };
++  });
++
+@@ -197 +225,8 @@ export default function (pi: ExtensionAPI) {
+-  pi.on("input", () => {
++  pi.on("input", async (_event, ctx) => {
++    if (autoExit && !agentStarted) {
++      try { await preflightModel(ctx); } catch {
++        providerFailed = true;
++        closeProviderFailure(ctx);
++        return { action: "handled" as const };
++      }
++    }
+@@ -226,0 +262 @@ export default function (pi: ExtensionAPI) {
++    if (providerFailed) { closeProviderFailure(ctx); return; }
+@@ -291 +327,2 @@ export default function (pi: ExtensionAPI) {
+-  pi.on("after_provider_response", () => {
++  pi.on("after_provider_response", (event) => {
++    authResponseFailed = event.status === 401 || event.status === 403;

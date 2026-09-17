@@ -379,9 +379,27 @@ can ask the parent questions and resume by name. Worker delegation is available.
 | worker | Read/write/edit/bash/web tools; can spawn scout and researcher |
 
 Profiles start fresh sessions linked to the parent, append their role prompt,
-and exit automatically when done. They use the configured default model unless
-the parent passes a `model` override. Instructions ask the parent to pass its
-current provider/model. Project `.pi/agents/*.md` overrides global roles.
+and exit automatically when done. Model selection uses an explicit `model`
+override, then a profile pin, then the parent's active provider/model. Project
+`.pi/agents/*.md` overrides global roles.
+
+Before spawning, the orchestrator checks authenticated-provider information from
+`subagents_list` and chooses a model for the task. Catalogue membership alone does
+not mean the provider is authenticated. The guard uses Pi's model/auth registry,
+not a Codex-specific allowlist, so multiple OAuth subscriptions, API keys,
+environment credentials, and registered custom providers can coexist.
+
+Unknown models and missing credentials fail before opening a pane. Resuming a
+completed child checks its saved model too. The guard does not silently replace
+an explicitly selected provider/model. Child startup authentication failures stop
+promptly instead of keeping a failed agent retrying in a pane. Credential presence
+does not prove token validity, quota, or connectivity; transient failures are not
+treated as missing credentials. A credential override or provider extension loaded
+only in the parent may be absent from a restricted child. The child checks its own
+runtime too; the guard never copies secrets into commands or widens its tool sandbox.
+
+`bash pi/test-subagent-provider.sh` exercises selection and failure handling with
+synthetic credentials and provider responses, without paid model calls.
 
 ```text
 /subagent scout Map the authentication flow.
