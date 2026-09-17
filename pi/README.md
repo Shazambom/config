@@ -400,6 +400,10 @@ runtime too; the guard never copies secrets into commands or widens its tool san
 
 `bash pi/test-subagent-provider.sh` exercises selection and failure handling with
 synthetic credentials and provider responses, without paid model calls.
+`bash pi/test-extensions.sh` also launches a real child in a private tmux server,
+holds its loopback provider response until its running process is identified,
+then returns HTTP 401. It asserts a sanitized parent error, one provider request,
+closed pane, and exited child processes using direct OS liveness checks.
 
 ```text
 /subagent scout Map the authentication flow.

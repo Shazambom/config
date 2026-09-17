@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync, realpathSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, basename } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createJiti } from 'jiti';
 import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager } from '@earendil-works/pi-coding-agent';
@@ -101,6 +102,60 @@ try {
   const resumed = completion('smoke-scout');
   await call('subagent_message', { name: 'smoke-scout', message: 'Check the evidence again.' });
   assert.match(JSON.stringify(await resumed), /FIXTURE_OK/);
+  await session.agent.waitForIdle();
+
+  const panes = () => execFileSync('tmux', ['list-panes', '-a', '-F', '#{pane_id} #{pane_pid}'], { encoding: 'utf8' }).trim().split('\n').map(line => {
+    const [id, pid] = line.split(' ');
+    return { id, pid: Number(pid) };
+  });
+  const alive = pid => {
+    try { process.kill(pid, 0); return true; }
+    catch (error) { if (error.code === 'ESRCH') return false; throw error; }
+  };
+  const until = async (predicate, label) => {
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      if (await predicate()) return;
+      await new Promise(resolve => setTimeout(resolve, 40));
+    }
+    throw new Error(`Timed out: ${label}`);
+  };
+  const initialPanes = panes();
+  const failed = completion('auth-failure');
+  await call('subagent', { agent: 'scout', name: 'auth-failure', model: 'authfail/smoke', task: 'Authentication failure fixture. Do not use tools.' });
+  const authStatus = async () => (await fetch(`${process.env.PI_TEST_URL}/auth-status`)).json();
+  await until(async () => (await authStatus()).requests === 1, 'child HTTP request');
+  const newPanes = panes().filter(pane => !initialPanes.some(before => before.id === pane.id));
+  assert.equal(newPanes.length, 1, 'exactly one child pane must exist before the HTTP response');
+  const childPane = newPanes[0];
+  const processes = execFileSync('ps', ['-axo', 'pid=,ppid=,comm='], { encoding: 'utf8' }).split('\n').flatMap(line => {
+    const match = /^\s*(\d+)\s+(\d+)\s+(.+)$/.exec(line);
+    return match ? [{ pid: Number(match[1]), parent: Number(match[2]), command: match[3] }] : [];
+  });
+  const descendants = new Set([childPane.pid]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const entry of processes) if (descendants.has(entry.parent) && !descendants.has(entry.pid)) {
+      descendants.add(entry.pid); changed = true;
+    }
+  }
+  const childAgents = processes.filter(entry => descendants.has(entry.pid) && ['pi', basename(process.execPath)].includes(basename(entry.command)));
+  assert(childAgents.length > 0, 'must observe the actual child Pi process, not just a pane');
+  assert(childAgents.every(entry => alive(entry.pid)));
+  const releasedAt = Date.now();
+  await fetch(`${process.env.PI_TEST_URL}/release-auth-error`, { method: 'POST' });
+  let failureResult;
+  failed.then(result => { failureResult = result; });
+  await until(() => failureResult, 'parent receives child authentication failure');
+  assert(failureResult.details.errorMessage, JSON.stringify(failureResult.details));
+  assert.match(failureResult.details.errorMessage, /authentication\/configuration failed/);
+  assert(!JSON.stringify(failureResult).includes('synthetic-secret-invalid-key'), 'raw provider response leaked');
+  await until(() => !panes().some(pane => pane.id === childPane.id), 'child pane closes');
+  await until(() => [...descendants].every(pid => !alive(pid)), 'child processes exit');
+  assert.equal((await authStatus()).requests, 1, 'permanent authentication failure must not retry');
+  assert(panes().some(pane => pane.id === process.env.TMUX_PANE), 'parent pane must survive');
+  console.log(`PASS: real child HTTP 401 -> sanitized parent error -> pane closed and ${childAgents.length} observed Pi process(es) exited in ${Date.now() - releasedAt}ms; exactly one provider request.`);
   await session.agent.waitForIdle();
 
   const jiti = createJiti(import.meta.url);

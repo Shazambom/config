@@ -22,10 +22,16 @@ node "$repo/pi/tests/model-fixture.mjs" > "$test_dir/model-status" 2> "$test_dir
 IFS= read -r -t 30 port <&3 || fail 'Model fixture startup timed out'
 case "$port" in ''|*[!0-9]*) fail "Invalid fixture port: $port" ;; esac
 export PI_TEST_URL="http://127.0.0.1:$port"
-jq -n --arg url "$PI_TEST_URL/v1" '{providers: {smoke: {
-  baseUrl: $url, api: "openai-completions", apiKey: "local-test-only",
-  models: [{id: "smoke", contextWindow: 128000, maxTokens: 1024}]
-}}}' > "$PI_CODING_AGENT_DIR/models.json"
+jq -n --arg url "$PI_TEST_URL" '{providers: {
+  smoke: {
+    baseUrl: ($url + "/v1"), api: "openai-completions", apiKey: "local-test-only",
+    models: [{id: "smoke", contextWindow: 128000, maxTokens: 1024}]
+  },
+  authfail: {
+    baseUrl: ($url + "/auth/v1"), api: "openai-completions", apiKey: "local-invalid-test-key",
+    models: [{id: "smoke", contextWindow: 128000, maxTokens: 1024}]
+  }
+}}' > "$PI_CODING_AGENT_DIR/models.json"
 jq '.defaultProvider = "smoke" | .defaultModel = "smoke" | .defaultThinkingLevel = "off" | .retry.enabled = false | .defaultProjectTrust = "yes"' \
   "$PI_CODING_AGENT_DIR/settings.json" > "$test_dir/settings.json"
 mv "$test_dir/settings.json" "$PI_CODING_AGENT_DIR/settings.json"
@@ -38,6 +44,7 @@ node "$repo/pi/tests/extension-fixture.mjs" > "$test_dir/extensions.log" 2>&1 &
 fixture_pid=$!
 start_deadline "$fixture_pid" 150
 if ! wait "$fixture_pid"; then
+  tail -80 "$test_dir/extensions.log" >&2
   tmux -S "$tmux_socket" list-panes -a -F '#{pane_id}' > "$test_dir/panes"
   while IFS= read -r pane; do tmux -S "$tmux_socket" capture-pane -p -t "$pane" -S -80 >&2; done < "$test_dir/panes"
   fail 'Extension fixture failed or timed out'

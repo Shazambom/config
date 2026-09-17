@@ -76,6 +76,21 @@ Memory lives under the project's .memory/ directory and can contain private
 conversation data. Keep it out of commits. /om off disables memory triggers.
 Use /om:status to inspect memory activity and errors.
 
+## Prove the result
+
+After completing a task, ask how to prove the result works. Inspect the actual
+artifact and exercise the actual runtime path. A build, fresh file, agent report,
+or cached screenshot is not proof of behavior. For integrations, verify the full
+input-to-output communication path. Check process liveness directly and read
+actual values rather than inferring them from derived state. If a check fails,
+check the observation method before blaming the system.
+
+Inspect delegated changes and runtime results yourself. Prefer deterministic,
+repeatable checks. Keep verification output in a reported, non-committed artifact
+path so the user can inspect it and rerun the check. State exactly what was tested
+and what remains unverified. Never claim a check ran based only on a delegate's
+summary, and never fabricate a missing tool or skill.
+
 ## Human code review
 
 pi-diff-review provides user-invoked /diff and /view commands, not model tools.

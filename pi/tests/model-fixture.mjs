@@ -1,8 +1,33 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 
+let authRequests = 0;
+let authReleased = false;
+const pendingAuth = [];
+const rejectAuth = res => {
+  res.writeHead(401, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ error: { message: 'synthetic-secret-invalid-key', type: 'invalid_api_key', code: 'invalid_api_key' } }));
+};
 const server = createServer(async (req, res) => {
   try {
+    if (req.url === '/auth-status') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ requests: authRequests }));
+      return;
+    }
+    if (req.url === '/release-auth-error') {
+      authReleased = true;
+      pendingAuth.splice(0).forEach(rejectAuth);
+      res.end('released');
+      return;
+    }
+    if (req.url === '/auth/v1/chat/completions') {
+      authRequests++;
+      req.resume();
+      if (authReleased) rejectAuth(res);
+      else pendingAuth.push(res);
+      return;
+    }
     if (req.url === '/page') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end('<html><head><title>Portable Pi fixture</title></head><body><article><h1>Portable Pi evidence</h1><p>A local page used to verify page extraction and browser interaction without sending data to a hosted service. The fixture exercises the extraction library on a complete HTML document with a title and article text. Tests verify that the returned Markdown includes the article heading and body rather than an error or an empty result. Browser tests navigate to this page, fill in the text field, press the button, and inspect the document title. They also check that console output and the request are captured. All content is synthetic and served by a loopback HTTP server. No private user data or external credentials are involved in the offline tests.</p><input id="name"><button onclick="document.title=document.querySelector(\'#name\').value; console.log(\'clicked\')">Save</button></article></body></html>');
