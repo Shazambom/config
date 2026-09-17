@@ -425,6 +425,52 @@ In standard tmux, `Ctrl+b d` detaches and `tmux attach` returns.
 `pi/patches/interactive-subagents.patch` makes spawn and resume use the parent's
 Node executable and Pi entry point, independent of a new pane's shell PATH.
 
+### Optional team communication
+
+`/team on` enables communication for the current orchestrator and its descendants.
+It is off by default. `/team off` disables routing and removes the active messaging
+tool and its prompt guidance. Unread messages are discarded across that mode change,
+not replayed when enabled again. Messages already read cannot be forgotten.
+The normal `subagent_message` steering path works in either mode.
+
+While enabled, agents use one tool, `team_send(to, message)`. `#team` broadcasts;
+a live peer's name sends a DM. `orchestrator` addresses the root and `parent`
+addresses the immediate delegator. The root sees every DM, including peer-to-peer
+messages. Replies use `reply_to`; optional `wait_for_reply` keeps a question's
+sender alive for up to 60 seconds. Completed agents are not restarted by messages.
+Peer messages never authorize reassignment or changes outside an agent's scope.
+
+`/team` reports the mode and log path. The private conversation log lives under
+`~/.pi/teams/<root-session-id>/messages.jsonl`, outside Git. DMs are directed
+messages, not a filesystem security boundary. Root mirrors do not wake the model
+for every message. They enter its context at the next request.
+
+`/arena <task>` and `/skill:arena <task>` run the arena skill through a dedicated
+coordinator. Communication is suspended across the tree before it starts. The
+coordinator launches fresh independent candidates, judges their completed outputs,
+and verifies its synthesis. A runtime cleanup restores the requested communication
+state on completion, failure, or `/arena cancel`. Nested suspensions remain off
+until the last run ends. An explicit `/team off` during an arena keeps it off after
+completion. Normal orchestrator steering remains available throughout.
+
+The bundled arena skill chooses capable authenticated models and reports when only
+one model family is available. Setup migrates only the exact prior bundled skill,
+backs it up privately, and preserves customized skills.
+
+Checks:
+
+```sh
+bash pi/test-team.sh             # SDK and routing checks without model network calls
+bash claude/test-arena-setup.sh  # Conservative skill migration
+bash pi/test-team-live.sh --run  # Real models and tmux; uses account quota
+```
+
+The live exercise gives two agents separate inputs to a scheduling problem. They
+must exchange a question and reply, deliver both DMs to the orchestrator, and
+produce a checked schedule. It preserves the receipts, provider tool inventories,
+and output artifacts in a printed private temporary directory. Its tmux server is
+isolated from working panes; it does not copy credentials.
+
 ### iTerm2 selection and tmux integration
 
 Launch `pi` from a fresh iTerm2 tab outside tmux. The launcher starts `tmux -CC`:

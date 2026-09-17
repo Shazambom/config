@@ -61,6 +61,30 @@ BUNDLES
 }
 migrate_bundled_design
 
+migrate_bundled_arena() {
+  local target="$destination/skills/arena" backup="$destination/arena-skill-backup-86f1583" digest
+  local -a hash_command
+  [[ ! -L "$destination" && ! -L "$destination/skills" ]] || return 0
+  [[ -d "$target" && ! -L "$target" && -f "$target/SKILL.md" && ! -L "$target/SKILL.md" ]] || return 0
+  [[ ! -e "$backup" && ! -L "$backup" ]] || return 0
+  [[ -z "$(find "$target" -mindepth 1 ! -path "$target/SKILL.md" -print -quit)" ]] || return 0
+  if command -v shasum >/dev/null 2>&1; then
+    hash_command=(shasum -a 256)
+  elif command -v sha256sum >/dev/null 2>&1; then
+    hash_command=(sha256sum)
+  else
+    return 0
+  fi
+  digest="$("${hash_command[@]}" < "$target/SKILL.md")" || return 0
+  [[ "${digest%% *}" == 7a637b50e6acea6937679c5bb8f89624306f8f26fa8544c924fac243107c2278 ]] || return 0
+  [[ -f "$source_root/skills/arena/SKILL.md" ]] || return 0
+  cmp -s "$target/SKILL.md" "$source_root/skills/arena/SKILL.md" && return 0
+  mkdir -m 700 "$backup" || return 0
+  mv "$target" "$backup/arena"
+  printf 'Backed up bundled arena skill to %s\n' "$backup/arena"
+}
+migrate_bundled_arena
+
 for source in "$source_root/skills"/*; do
   [[ -d "$source" ]] || continue
   target="$destination/skills/${source##*/}"
