@@ -17,16 +17,19 @@ outside skill discovery before seeding the updated skill; customized directories
 - Claude Code built-ins: the `simplify` skill, transcribed from the CLI's
   bundled skill text (not present on disk in any Claude config).
 - Repository-authored: `design`, an approval-gated contract and data-flow review
-  loop. `/skill:design <existing plan or plan reference>` uses a verified ignored
-  project directory, preferring an existing scratch directory and creating `.design/`
-  with an ignore rule only when needed. It revises files through review comments
-  or direct edits and waits for explicit implementation approval. Generated
-  `design.go` starts with spaced-out Go pseudocode calls, followed by added, changed,
-  and removed Go contracts. Unchanged gopls stand-ins live in `support.go`.
-  `/view design.go` is the default review entry point. KISS governs the proposal.
-  An isolated `go.mod` supports gopls; package snapshots use `.txt` suffixes.
-  Templates live in `skills/design/references/design.go.txt` and `support.go.txt`.
-  Run `bash claude/test-design-go.sh` to check it with installed Go and gopls.
+  loop. `/design golang`, `/design python`, and `/design rust` select its document
+  language; `/skill:design` accepts the same selectors and plan arguments. The
+  `/design` command is a prompt alias that asks the agent to load the full skill.
+  Designs use a verified ignored project directory, preferring an existing scratch
+  directory and creating `.design/` with an ignore rule only when needed.
+  `design.go`, `design.py`, or `design.rs` begins with spacious native pseudocode,
+  followed by proposed contracts. Unchanged tooling types live in a separate
+  support file. `/view` is the review entry point; edits are not implementation
+  approval. Selecting another language preserves the old workspace and requires
+  a fresh review. KISS and explicit derivations apply in every language.
+  Examples and language guides live under `skills/design/references/`; complete
+  package snapshots use `.txt` suffixes. Run `DESIGN_REQUIRE_TOOLS=1 bash
+  claude/test-design-languages.sh` after full `./init.sh` to check all examples.
 
 There were no destination name collisions in this snapshot. Only skills and
 commands were imported, not Claude settings, sessions, credentials, or MCP config.

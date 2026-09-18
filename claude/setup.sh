@@ -28,6 +28,7 @@ d404be7 references/document.md 398d2e07b4f43c637e85f1d86f1e5b095574c5d1545143ec0
 go-contracts-v1 references/design.go.txt cda433c97cc8ff47c3b21b75f5363525dd98567ad8d8b53ddf27c5f20545f4d1 b81e2a8bb59fdc0730c902cfeabcc3deb095e542be2805b1468d10017e011747
 flow-first-v1 references/design.go.txt 02cb99d025d6e58a3a692a58e9d89b7a12cabda3f6d561f39e1ad67154eccf64 5cdd415093d2b83fbb6dd14f6a5be490009b9b7238346712c312a0a730dc05b6 d92f099440ba8791b3d10e5ad3615770c37389baf9b27b253d696355b734b2cd
 pseudocode-v1 references/design.go.txt 072b873d06a357f5dc475090e7fc9869bec08ca55176fe797f6a99020ddba4ea f480db7e295f5d6bacb1e74da6ba242f43c3571f9cb0e4c0f0c855eff3d54073 d92f099440ba8791b3d10e5ad3615770c37389baf9b27b253d696355b734b2cd
+comments-v1 references/design.go.txt 32b0e8c2ce757f0e23b01a77f376bc1f55d40897d084e2e099ae042c685d8668 3d1205cafe17d82da78653e4f90448b0a39a99ce0e62d8f965858ecbb03e6791 d92f099440ba8791b3d10e5ad3615770c37389baf9b27b253d696355b734b2cd
 BUNDLES
   [[ "${digest%% *}" == "$skill_hash" ]] || return 0
   backup="$destination/design-skill-backup-$version"
@@ -60,6 +61,30 @@ BUNDLES
   printf 'Backed up bundled design skill to %s\n' "$backup/design"
 }
 migrate_bundled_design
+
+migrate_design_rust_guide() {
+  local target="$destination/skills/design" source="$source_root/skills/design"
+  local backup="$destination/design-skill-backup-rust-offline-v1" digest
+  [[ ! -L "$destination" && ! -L "$destination/skills" && -d "$target" && ! -L "$target" ]] || return 0
+  [[ -f "$target/references/rust.md" && -f "$source/references/rust.md" ]] || return 0
+  [[ ! -e "$backup" && ! -L "$backup" ]] || return 0
+  [[ -z "$(find "$target" -type l -print -quit)" ]] || return 0
+  [[ -z "$(find "$target" -name rust.md ! -path "$target/references/rust.md" -print -quit)" ]] || return 0
+  if command -v shasum >/dev/null 2>&1; then
+    digest="$(shasum -a 256 < "$target/references/rust.md")"
+  elif command -v sha256sum >/dev/null 2>&1; then
+    digest="$(sha256sum < "$target/references/rust.md")"
+  else
+    return 0
+  fi
+  [[ "${digest%% *}" == 7ccdc2fefbe22d8751d745fa0325476e441b970e24c226568663a1b11c151046 ]] || return 0
+  diff -qr -x rust.md "$target" "$source" >/dev/null || return 0
+  cmp -s "$target/references/rust.md" "$source/references/rust.md" && return 0
+  mkdir -m 700 "$backup" || return 0
+  mv "$target" "$backup/design"
+  printf 'Backed up bundled design skill to %s\n' "$backup/design"
+}
+migrate_design_rust_guide
 
 migrate_bundled_arena() {
   local target="$destination/skills/arena" backup="$destination/arena-skill-backup-86f1583" digest

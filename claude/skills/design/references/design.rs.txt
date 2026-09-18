@@ -1,0 +1,55 @@
+/*
+FLOW: place an order
+
+    // INPUTS: ctx and command come from PlaceOrder. order_store is its existing dependency.
+    // order_id and error come from the inspected OrderStore.Insert contract.
+    let (order_id, error) = order_store.insert(
+        ctx,
+        command.customer_id,
+        command.items,
+        command.idempotency_key,
+    );
+
+    if error.is_some() {
+        return (None, error);
+    }
+
+    // DERIVATION: receipt
+    let receipt = OrderReceipt {
+        order_id: order_id,
+        status: String::from("placed"),
+    };
+
+    return (Some(receipt), None);
+*/
+
+pub mod support;
+
+use support::{Context, CustomerID, OrderError, OrderID, OrderItem};
+
+// ADDED CONTRACTS
+
+// Source: internal/orders/service.go.PlaceOrderCommand; Rust document model.
+pub struct PlaceOrderCommand {
+    pub customer_id: CustomerID,
+    pub items: Option<Vec<OrderItem>>,
+    pub idempotency_key: String,
+}
+
+// Source: internal/orders/service.go.OrderReceipt.
+pub struct OrderReceipt {
+    pub order_id: OrderID,
+    pub status: String,
+}
+
+// CHANGED CONTRACTS
+
+// Source: internal/orders/service.go.PlaceOrder.
+// Invariant: items must be nonempty; error implies no usable receipt.
+// UNRESOLVED: duplicate_key = ReturnExistingReceipt | Conflict.
+pub type PlaceOrder =
+    fn(ctx: Context, command: PlaceOrderCommand) -> (Option<OrderReceipt>, Option<OrderError>);
+
+// REMOVED CONTRACTS
+
+// internal/orders/legacy.go.SubmitRawOrder

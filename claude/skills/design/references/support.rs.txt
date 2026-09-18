@@ -1,0 +1,27 @@
+// TOOLING SUPPORT ONLY - NOT PROPOSED CHANGES
+// Omitted fields are not removals. These declarations model inspected Go contracts.
+
+// Source: context.Context and builtin error; opaque tooling stand-ins.
+pub enum Context {}
+pub enum OrderError {}
+
+// Source: internal/orders/types.go.
+pub struct CustomerID(pub String);
+pub struct OrderID(pub String);
+
+pub struct OrderItem {
+    pub product_id: String,
+    pub quantity: isize,
+}
+
+// Source: internal/orders/store.go.OrderStore. Existing interface, unchanged.
+// Invariant: an error makes the returned identifier unusable.
+pub trait OrderStore {
+    fn insert(
+        &self,
+        ctx: Context,
+        customer_id: CustomerID,
+        items: Option<Vec<OrderItem>>,
+        idempotency_key: String,
+    ) -> (OrderID, Option<OrderError>);
+}

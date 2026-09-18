@@ -40,7 +40,13 @@ call plug#begin('~/.local/share/nvim/plugged')
 " Install with `:PlugInstall`
 
 Plug 'neoclide/coc.nvim', {'branch': 'release'}
-let g:coc_global_extensions = ['coc-pyright', 'coc-tsserver', 'coc-go', 'coc-sql', 'coc-json']
+let $CARGO_HOME = expand('~/.cargo')
+let $RUSTUP_HOME = expand('~/.rustup')
+let $RUSTUP_AUTO_INSTALL = '0'
+if index(split($PATH, ':'), $CARGO_HOME . '/bin') < 0
+  let $PATH = $CARGO_HOME . '/bin:' . $PATH
+endif
+let g:coc_global_extensions = ['coc-pyright', 'coc-tsserver', 'coc-go', 'coc-rust-analyzer', 'coc-sql', 'coc-json']
 
 
 Plug 'folke/tokyonight.nvim', { 'branch': 'main' }

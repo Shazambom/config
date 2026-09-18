@@ -1,0 +1,29 @@
+# TOOLING SUPPORT ONLY - NOT PROPOSED CHANGES
+# Omitted fields are not removals. These declarations model inspected Go contracts.
+
+from typing import NamedTuple, NewType, Optional, Protocol
+
+# Source: context.Context; opaque here, not a cancellation implementation.
+class Context: ...
+
+
+# Source: internal/orders/types.go.
+CustomerID = NewType("CustomerID", str)
+OrderID = NewType("OrderID", str)
+
+
+class OrderItem(NamedTuple):
+    product_id: str
+    quantity: int
+
+
+# Source: internal/orders/store.go.OrderStore. Existing interface, unchanged.
+# Invariant: an error makes the returned identifier unusable.
+class OrderStore(Protocol):
+    def insert(
+        self,
+        ctx: Context,
+        customer_id: CustomerID,
+        items: Optional[list[OrderItem]],
+        idempotency_key: str,
+    ) -> tuple[OrderID, Optional[Exception]]: ...

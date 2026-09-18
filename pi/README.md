@@ -146,18 +146,31 @@ Review skills before running them: they can direct shell execution.
 
 ## Design sessions
 
-Run `/skill:design <existing plan or plan reference>` before implementation.
-The skill reads the affected code and drafts `design.go` in a private session
-subdirectory of a verified Git-ignored project directory. It first looks for a
+Choose the document language before implementation:
+
+```text
+/design golang <existing plan or plan reference>
+/design python <existing plan or plan reference>
+/design rust <existing plan or plan reference>
+```
+
+`/skill:design` accepts the same arguments. `go`, `py`, and `rs` are aliases.
+Without a selector, new designs use Go and resumed designs keep their language.
+Changing language creates a fresh review workspace and preserves the old files and
+snapshots. It does not approve implementation or a source-language rewrite.
+
+The skill reads the affected code and drafts `design.go`, `design.py`, or `design.rs`
+in a private session subdirectory of a verified Git-ignored project directory. It first looks for a
 suitable existing scratch directory. If none exists, it may create `.design/`
 and add `/.design/` to the root `.gitignore`. It checks the actual file paths with
 `git check-ignore` and verifies they are untracked; directory names are not proof.
-`design.go` starts with spacious Go-shaped pseudocode in a block comment, before
-the package clause. Each call captures named results, multiline calls put one
+The file starts with spacious language-shaped pseudocode in a block comment or
+Python module docstring, before declarations and imports. Each call captures named results, multiline calls put one
 argument on each line, and blank lines separate calls, mappings, guards, and returns.
 Short early-return guards show errors. Dense arrow chains and deeply nested traces
 are forbidden; a callee's interactions belong in a separate named flow. Added, changed, and removed contracts follow in clear sections, using
-valid Go declarations without function bodies. Compact field/signature deltas make
+valid native declarations without implementations. Python uses ellipsis-only
+signature stubs where its grammar needs them. Compact field/signature deltas make
 changes visible without comparing every existing field. No Markdown tables or fences.
 
 Every new field or variable needs a visible origin. Named `DERIVATION` sections
@@ -168,20 +181,21 @@ The comment rules apply throughout: no redundant narration, change history, rati
 or comments inside structs. Pseudocode and navigation labels stay; explanatory comments
 must state behavior that the code cannot express.
 
-Unchanged types and dependency stand-ins live separately in `support.go`, in the
-same package. They help gopls type-check the proposal; syntax coloring alone does
-not require them. Proposed changes must never be hidden in that file. KISS remains
+Unchanged types and dependency stand-ins live separately in `support.go`,
+`support.py`, or `support.rs`. They help the language checker resolve the proposal;
+syntax coloring alone does not require them. Proposed changes must never be hidden in that file. KISS remains
 explicit: use the simplest correct design, without speculative abstractions.
 
-A design-local `go.mod` isolates the package. Every revision snapshots the whole
-package under `snapshots/revision-NNN/`, with `.txt` suffixes so old Go declarations
-and module files are not loaded. The agent checks syntax and types without fetching
+Go uses a design-local `go.mod`; Python can use a local `pyrightconfig.json`;
+Rust uses a dependency-free `Cargo.toml` with its own workspace. Every revision
+snapshots the whole package under `snapshots/revision-NNN/`, with `.txt` suffixes
+so old declarations and configuration are not loaded. The agent checks syntax and types without fetching
 dependencies. Those checks do not validate the flow comments, prove behavior, or
 establish production compatibility.
 
-The agent gives you `/view <path>/design.go` for every review round. `/view` opens
-ignored files and collects comments; Enter queues feedback as a steering message.
-You can also edit `design.go` in Neovim. The agent re-reads direct edits before
+The agent gives you `/view <path>/design.go`, `design.py`, or `design.rs` for every
+review round. `/view` opens ignored files and collects comments; Enter queues
+feedback as a steering message. You can also edit the file in Neovim. The agent re-reads direct edits before
 applying feedback and saves each presented revision as an immutable snapshot.
 Revision comparisons with `/diff --no-index` are optional, on request.
 
@@ -196,7 +210,23 @@ Pi sessions and the existing review-comment cache can still retain excerpts.
 Sources live in `claude/skills/design/` and deploy through `init.sh --pi`.
 Setup preserves customized global skills. It archives exact known Markdown,
 plain-text, and prior Go bundles outside discovery before seeding the updated skill.
-`bash claude/test-design-go.sh` checks the example with Go and gopls when installed.
+`DESIGN_REQUIRE_TOOLS=1 bash claude/test-design-languages.sh` requires and runs the
+Go/gopls, Python/pyright, and Rust compiler/formatter checks. Full `./init.sh` sets up
+Neovim's Python and Rust support, the pyright CLI, and a minimal rustup toolchain
+with rust-analyzer, rustfmt, and standard-library sources. It preserves an existing
+Rust default toolchain and does not edit shell profiles. Neovim disables implicit
+rustup installation; a missing project toolchain is reported rather than fetched.
+Design checks disable those downloads too and pin Cargo output inside the workspace. Neovim uses the managed
+`~/.cargo` and `~/.rustup` paths. `./init.sh --pi` remains Pi-only and does not install
+these editor tools.
+
+`bash nvim/test-design-editors.sh` exercises the actual editor language services,
+syntax highlighting, and `/view` rendering, preserving its proof artifacts.
+`bash nvim/test-rust-isolation.sh` checks download suppression and build-output
+isolation. `bash claude/test-design-live.sh --run` uses the configured model to
+exercise all three `/design` selectors in temporary Git projects, checks the
+resulting packages and snapshots, and confirms the original source stayed intact.
+This last check uses account quota.
 
 ## Installed extensions
 

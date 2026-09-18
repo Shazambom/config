@@ -1,0 +1,57 @@
+"""
+FLOW: place an order
+
+    # INPUTS: ctx and command come from PlaceOrder. order_store is its existing dependency.
+    # order_id and error come from the inspected OrderStore.Insert contract.
+    order_id, error = order_store.insert(
+        ctx,
+        command.customer_id,
+        command.items,
+        command.idempotency_key,
+    )
+
+    if error is not None:
+        return None, error
+
+    # DERIVATION: receipt
+    receipt = OrderReceipt(
+        order_id=order_id,
+        status="placed",
+    )
+
+    return receipt, None
+"""
+
+from typing import NamedTuple, Optional
+
+from support import Context, CustomerID, OrderID, OrderItem
+
+# ADDED CONTRACTS
+
+# Source: internal/orders/service.go.PlaceOrderCommand; Python document model.
+class PlaceOrderCommand(NamedTuple):
+    customer_id: CustomerID
+    items: Optional[list[OrderItem]]
+    idempotency_key: str
+
+
+# Source: internal/orders/service.go.OrderReceipt.
+class OrderReceipt(NamedTuple):
+    order_id: OrderID
+    status: str
+
+
+# CHANGED CONTRACTS
+
+# Source: internal/orders/service.go.PlaceOrder.
+# Invariant: items must be nonempty; error implies no usable receipt.
+# UNRESOLVED: duplicate_key = ReturnExistingReceipt | Conflict.
+def place_order(
+    ctx: Context,
+    command: PlaceOrderCommand,
+) -> tuple[Optional[OrderReceipt], Optional[Exception]]: ...
+
+
+# REMOVED CONTRACTS
+
+# internal/orders/legacy.go.SubmitRawOrder

@@ -37,6 +37,15 @@ if [[ "$live" == false ]]; then
   rpc 5 '{"id":"5","type":"clear_queue"}'
   rpc 6 '{"id":"6","type":"steer","message":"/skill:design Use the existing fixture plan"}'
   rpc 7 '{"id":"7","type":"clear_queue"}'
+  rpc 8 '{"id":"8","type":"steer","message":"/design python fixture-plan"}'
+  rpc 9 '{"id":"9","type":"clear_queue"}'
+  rpc 10 '{"id":"10","type":"steer","message":"/design golang fixture-plan"}'
+  rpc 11 '{"id":"11","type":"clear_queue"}'
+  rpc 12 '{"id":"12","type":"steer","message":"/design rust fixture-plan"}'
+  rpc 13 '{"id":"13","type":"clear_queue"}'
+  for file in golang.md python.md rust.md design.py.txt support.py.txt design.rs.txt support.rs.txt; do
+    cmp "$repo/claude/skills/design/references/$file" "$HOME/.claude/skills/design/references/$file"
+  done
   for file in design.go.txt support.go.txt; do
     example="$HOME/.claude/skills/design/references/$file"
     cmp "$repo/claude/skills/design/references/$file" "$example"
@@ -61,8 +70,12 @@ jq -es --argjson live "$live" --arg home "$HOME" '
     check(any(.[]; .name == "fixture-review" and .source == "prompt"); "Missing nested /fixture-review prompt") |
     check(any(.[]; .name == "skill:example" and .path == $home + "/.claude/skills/example/SKILL.md"); "Skill source path mismatch") |
     check(any(.[]; .name == "skill:design" and .path == $home + "/.claude/skills/design/SKILL.md"); "Missing bundled design skill") |
+    check(any(.[]; .name == "design" and .source == "prompt"); "Missing /design alias") |
+    check(($responses[8].steering | length) == 1 and ($responses[8].steering[0] | contains("python fixture-plan")); "Python design arguments lost") |
+    check(($responses[10].steering | length) == 1 and ($responses[10].steering[0] | contains("golang fixture-plan")); "Go design arguments lost") |
+    check(($responses[12].steering | length) == 1 and ($responses[12].steering[0] | contains("rust fixture-plan")); "Rust design arguments lost") |
     check(($responses[6].steering | length) == 1; "Design skill did not queue exactly once") |
-    reduce ["# Design", "references/design.go.txt", "references/support.go.txt", "Flow first", "A good flow looks like this", "DERIVATION: IsProviderBoundReschedule", "Every introduced field", "derivation coverage", "Apply the comment rules", "No comments inside structs", "One call per block", "orderID, err := orderStore.Insert(", "TOOLING SUPPORT ONLY", "Write valid Go", "design.go", "Use `/view` for every review round", "Boundaries and KISS", "simplest design that meets the requirements", "git check-ignore -q", "git ls-files", "Prefer an existing Git-ignored", "Use the existing fixture plan"][] as $text
+    reduce ["# Design", "references/golang.md", "references/python.md", "references/rust.md", "leading selector", "design.py", "design.rs", "Flow first", "A good flow looks like this", "DERIVATION: IsProviderBoundReschedule", "Every introduced field", "derivation coverage", "Apply the comment rules", "No comments inside structs", "One call per block", "orderID, err := orderStore.Insert(", "TOOLING SUPPORT ONLY", "Write valid declarations",  "design.go", "Use `/view` for every review round", "Boundaries and KISS", "simplest design that meets the requirements", "git check-ignore -q", "git ls-files", "Prefer an existing Git-ignored", "Use the existing fixture plan"][] as $text
       (.; check(($responses[6].steering[0] | contains($text)); "Expanded design skill missing: " + $text)) |
     check($responses[2].steering == ["Review two words with two words extra."]; "Quoted prompt arguments expanded incorrectly") |
     reduce ["Read references/guide.md", "some context", "skills/example"][] as $text

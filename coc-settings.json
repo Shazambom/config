@@ -2,5 +2,8 @@
   // gopls is managed by init.sh (go install); with goplsPath set,
   // coc-go skips its own install and the startup version check.
   "go.goplsPath": "~/go/bin/gopls",
-  "go.checkForUpdates": "disabled"
+  "go.checkForUpdates": "disabled",
+  "rust-analyzer.server.path": "~/.cargo/bin/rust-analyzer",
+  "rust-analyzer.updates.checkOnStartup": false,
+  "rust-analyzer.updates.prompt": "neverDownload"
 }

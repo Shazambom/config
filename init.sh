@@ -62,6 +62,7 @@ cd "$repo"
 mkdir -p ~/.config/nvim
 cp ./init.vim ~/.config/nvim/init.vim
 cp ./coc-settings.json ~/.config/nvim/coc-settings.json
+bash "$repo/nvim/setup-language-tools.sh"
 
 # tree-sitter CLI is required by nvim-treesitter (main branch) to build parsers
 command -v tree-sitter >/dev/null 2>&1 || npm install -g tree-sitter-cli
@@ -77,7 +78,7 @@ nvim --headless +"PlugUpdate --sync" +PlugClean! +qall
 
 echo "vim-plug plugins installed"
 
-nvim --headless +"CocInstall -sync coc-pyright coc-tsserver coc-go coc-sql coc-json" +qall
+nvim --headless +"CocInstall -sync coc-pyright coc-tsserver coc-go coc-rust-analyzer coc-sql coc-json" +qall
 
 echo "coc extensions installed"
 

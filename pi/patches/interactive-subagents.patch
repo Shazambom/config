@@ -1,5 +1,5 @@
 diff --git a/pi-extension/subagents/index.ts b/pi-extension/subagents/index.ts
-index 7e20a0f..3e1324d 100644
+index 7e20a0f..66bdef1 100644
 --- a/pi-extension/subagents/index.ts
 +++ b/pi-extension/subagents/index.ts
 @@ -2 +2,5 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
@@ -46,7 +46,18 @@ index 7e20a0f..3e1324d 100644
 +    } catch {}
 +    throw error;
 +  }
-@@ -1644,0 +1665,10 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -1526,0 +1547 @@ async function watchSubagent(
++  options: { closeSurface?: boolean } = {},
+@@ -1573 +1594 @@ async function watchSubagent(
+-      closeSurface(surface);
++      if (options.closeSurface !== false) closeSurface(surface);
+@@ -1601 +1622 @@ async function watchSubagent(
+-    closeSurface(surface);
++    if (options.closeSurface !== false) closeSurface(surface);
+@@ -1617 +1638 @@ async function watchSubagent(
+-      closeSurface(surface);
++      if (options.closeSurface !== false) closeSurface(surface);
+@@ -1644,0 +1666,10 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 +  if (!process.env.PI_TEAM_DIR) teamExtension(pi);
 +  installArena(pi, {
 +    async launch(task, ctx) {
@@ -54,32 +65,32 @@ index 7e20a0f..3e1324d 100644
 +      const model = await preflightModel(ctx);
 +      return launchSubagent({ agent: "arena", name: `arena-${Date.now()}`, task, model }, ctx);
 +    },
-+    watch: (running, signal) => watchSubagent(running as RunningSubagent, signal),
++    watch: (running, signal) => watchSubagent(running as RunningSubagent, signal, { closeSurface: false }),
 +    close: closeSurface,
 +  });
-@@ -1760,0 +1791,3 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -1760,0 +1792,3 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 +        const profileModel = loadAgentDefaults(params.agent)?.model;
 +        params.model = await preflightModel(ctx, params.model ?? profileModel);
 +
-@@ -1966 +1999 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -1966 +2000 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 -      async execute() {
 +      async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-@@ -1984 +2017 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -1984 +2018 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 -          content: [{ type: "text", text: lines.join("\n") }],
 +          content: [{ type: "text", text: lines.join("\n") + "\n\n" + modelOptions(ctx) }],
-@@ -2144,0 +2178,3 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -2144,0 +2179,3 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 +        const savedModel = loadout.model ? undefined : SessionManager.open(sessionPath).buildSessionContext().model;
 +        loadout.model = await preflightModel(ctx, loadout.model ?? (savedModel ? `${savedModel.provider}/${savedModel.modelId}` : ""));
 +
-@@ -2156 +2192 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -2156 +2193 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 -        const parts = ["pi", "--session", shellEscape(sessionPath)];
 +        const parts = [shellEscape(process.execPath), shellEscape(resolve(process.argv[1])), "--session", shellEscape(sessionPath)];
-@@ -2168,0 +2205,4 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -2168,0 +2206,4 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 +        parts.push("-e", shellEscape(join(SUBAGENTS_DIR, "team-extension.ts")));
 +        let teamChild: Awaited<ReturnType<typeof reserveTeamChild>>;
 +        try { teamChild = await reserveTeamChild(ctx, name, sessionPath, surface); }
 +        catch (error) { closeSurface(surface); throw error; }
-@@ -2191 +2231 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -2191 +2232 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 -        const resumeEnvParts: string[] = [];
 +        const resumeEnvParts: string[] = [`PI_TEAM_DIR=${shellEscape(teamChild.dir)}`, `PI_TEAM_MEMBER=${shellEscape(teamChild.id)}`];
 diff --git a/pi-extension/subagents/model-preflight.ts b/pi-extension/subagents/model-preflight.ts
@@ -189,10 +200,10 @@ index ba37f06..2aeb953 100644
 +    authResponseFailed = event.status === 401 || event.status === 403;
 diff --git a/pi-extension/subagents/team-arena.ts b/pi-extension/subagents/team-arena.ts
 new file mode 100644
-index 0000000..cc75a41
+index 0000000..b7d3325
 --- /dev/null
 +++ b/pi-extension/subagents/team-arena.ts
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,101 @@
 +import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 +import { readFileSync } from "node:fs";
 +import { TeamStore, teamIdentity, processIdentity, paneOwner, type Member } from "./team.ts";
@@ -206,7 +217,9 @@ index 0000000..cc75a41
 +}
 +const ownedProcess = (m: Member) => !!(m.live && m.pid && m.pid !== process.pid && m.processIdentity && processIdentity(m.pid) === m.processIdentity);
 +const ownedPane = (m: Member) => {
-+  if (!m.live || !m.surface || !m.panePid || !m.paneIdentity) return false;
++  // A completed coordinator can leave its original shell pane behind. Only the
++  // recorded pane owner may be closed, never a replacement in the same pane ID.
++  if (!m.surface || !m.panePid || !m.paneIdentity) return false;
 +  const current = paneOwner(m.surface);
 +  return current.panePid === m.panePid && current.paneIdentity === m.paneIdentity;
 +};

@@ -36,13 +36,18 @@ diff -r "$test_dir/bundle/skills/design" "$target"
 setup
 diff -r "$test_dir/bundle/skills/design" "$target"
 
-while read -r revision document; do
-version="${revision:0:7}"
+while read -r revision document version support; do
+version="${version:-${revision:0:7}}"
 backup="$HOME/.claude/design-skill-backup-$version"
 rm -rf "$test_dir/old" "$test_dir/bundle/skills/design"
 mkdir -p "$test_dir/old/references"
 git -C "$repo" show "$revision:claude/skills/design/SKILL.md" > "$test_dir/old/SKILL.md"
 git -C "$repo" show "$revision:claude/skills/design/$document" > "$test_dir/old/$document"
+files=(SKILL.md "$document")
+if [[ -n "$support" ]]; then
+  git -C "$repo" show "$revision:claude/skills/design/$support" > "$test_dir/old/$support"
+  files+=("$support")
+fi
 cp -R "$test_dir/current-design" "$test_dir/bundle/skills/design"
 printf '\nFixture update\n' >> "$test_dir/bundle/skills/design/SKILL.md"
 
@@ -56,7 +61,7 @@ setup
 diff -r "$test_dir/old" "$backup/design"
 diff -r "$test_dir/bundle/skills/design" "$target"
 
-for file in SKILL.md "$document"; do
+for file in "${files[@]}"; do
   reset_old
   printf '\nUser customization\n' >> "$target/$file"
   expect_unchanged
@@ -71,7 +76,7 @@ rm "$target/$document"
 expect_unchanged
 
 # Symlinks, including dangling ones, must never qualify for migration.
-for link in SKILL.md "$document" references; do
+for link in "${files[@]}" references; do
   reset_old
   rm -rf "${target:?}/$link"
   ln -s "$test_dir/old/$link" "$target/$link"
@@ -131,5 +136,6 @@ expect_unchanged
 done <<'BUNDLES'
 d404be7653bdc50c60bdfcb679292d3458821001 references/document.md
 09ec53b4ff4330d598ed2b719045b06262be450c references/document.txt
+6eea9043b0024ae07d72bd8003cdd8fa330bb3a6 references/design.go.txt comments-v1 references/support.go.txt
 BUNDLES
-printf '%s\n' 'PASS: fresh seed, both exact design migrations, private backups, customizations, symlinks, backup conflicts and idempotence.'
+printf '%s\n' 'PASS: fresh seed, exact design migrations, private backups, customizations, symlinks, backup conflicts and idempotence.'

@@ -99,8 +99,9 @@ if (!child) {
   process.argv[1] = join(dirname(fileURLToPath(import.meta.resolve('@earendil-works/pi-coding-agent'))), 'cli.js');
   const runtime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: join(agentDir, 'models.json'), allowModelNetwork: false });
   const settingsManager = SettingsManager.inMemory({ retry: { enabled: false }, compaction: { enabled: false } });
+  let api;
   const loader = new DefaultResourceLoader({ cwd: temp, agentDir, settingsManager, noExtensions: true, noSkills: true, noPromptTemplates: true,
-    skillsOverride: () => ({ skills: [{ name: 'arena', description: 'fixture', filePath: skillPath, baseDir: temp, source: 'test' }], diagnostics: [] }), extensionFactories: [extension] });
+    skillsOverride: () => ({ skills: [{ name: 'arena', description: 'fixture', filePath: skillPath, baseDir: temp, source: 'test' }], diagnostics: [] }), extensionFactories: [pi => { api = pi; extension(pi); }] });
   await loader.reload();
   const { session } = await createAgentSession({ cwd: temp, agentDir, resourceLoader: loader, modelRuntime: runtime, settingsManager, model: runtime.getModel('fixture', 'fixture'), sessionManager: SessionManager.create(temp, join(temp, 'sessions')) });
   await session.bindExtensions({ mode: 'print' });
@@ -125,6 +126,29 @@ if (!child) {
     assert(!Object.values(store.state().members).some(m => m.id !== 'root' && m.live));
     const panes = execFileSync('tmux', ['list-panes', '-a', '-F', '#{pane_id}'], { encoding: 'utf8' }).trim().split('\n');
     assert.equal(panes.length, 1, 'Cancellation must close coordinator and descendant panes');
+    // A pane ID is not ownership: respawn it with an unrelated sentinel process.
+    // Cancelling must leave that replacement alive while cleaning owned children.
+    phase = 0;
+    let replacementPane;
+    const replacementStarted = new Promise(resolve => {
+      const unsubscribe = api.events.on('arena:started', data => { unsubscribe(); resolve(data); });
+    });
+    const replacementWorkerReady = new Promise(resolve => { cancelReady = resolve; });
+    const replacedRun = session.prompt('/arena repurposed pane fixture');
+    const coordinator = await Promise.race([replacementStarted, failAfter]);
+    await Promise.race([replacementWorkerReady, failAfter]);
+    replacementPane = coordinator.surface;
+    execFileSync('tmux', ['respawn-pane', '-k', '-t', replacementPane, 'tmux wait-for -S replacement-ready; exec sleep 120']);
+    await exec('tmux', ['wait-for', 'replacement-ready'], { timeout: 3000 });
+    const replacementPid = Number(execFileSync('tmux', ['display-message', '-p', '-t', replacementPane, '#{pane_pid}'], { encoding: 'utf8' }).trim());
+    try {
+      await session.prompt('/arena cancel');
+      await replacedRun;
+      assert.equal(Number(execFileSync('tmux', ['display-message', '-p', '-t', replacementPane, '#{pane_pid}'], { encoding: 'utf8' }).trim()), replacementPid, 'Replacement pane must survive arena watcher cancellation');
+      assert.doesNotThrow(() => process.kill(replacementPid, 0), 'Unrelated replacement process must remain alive');
+      assert.equal(effective(store.state()), true);
+      assert.equal(execFileSync('tmux', ['list-panes', '-a', '-F', '#{pane_id}'], { encoding: 'utf8' }).trim().split('\n').length, 2, 'Only root and unrelated replacement panes remain');
+    } finally { try { execFileSync('tmux', ['kill-pane', '-t', replacementPane]); } catch {} }
     // Exercise the actual idle TUI input loop, not only concurrent SDK prompt().
     const auditPath = join(temp, 'arena-audit.ts');
     writeFileSync(auditPath, `export default function(pi) {\nconst report = (type, data) => fetch(${JSON.stringify(baseUrl.replace('/v1', '/fixture-events'))}, { method: 'POST', body: JSON.stringify({type, ...data}) }).catch(() => {});\npi.registerCommand('fixture-ready', { description: 'Fixture input barrier', handler: (_args, ctx) => { report('ready', {sessionId: ctx.sessionManager.getSessionId()}); } });\npi.events.on('arena:started', data => { report('started', data); });\npi.events.on('arena:finished', data => { report('finished', data); });\n}\n`);
@@ -149,7 +173,7 @@ if (!child) {
       process.stderr.write(execFileSync('tmux', ['capture-pane', '-p', '-t', tuiPane, '-S', '-100'], { encoding: 'utf8' }));
       throw error;
     } finally { try { execFileSync('tmux', ['kill-pane', '-t', tuiPane]); } catch {} }
-    console.log(`PASS arena real CLI + TUI: local fake HTTP provider, ${requests} requests, two-phase auto-exit lifecycle, SDK and typed TUI mid-descendant cancellation restore ON.`);
+    console.log(`PASS arena real CLI + TUI: local fake HTTP provider, ${requests} requests, two-phase auto-exit lifecycle, SDK and typed TUI mid-descendant cancellation restore ON, repurposed coordinator pane and replacement PID survive cancellation.`);
   } finally {
     clearTimeout(timeout);
     await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' });
