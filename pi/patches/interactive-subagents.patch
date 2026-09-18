@@ -482,7 +482,7 @@ index 0000000..c369308
 +    });
 +    if (effective(state)) {
 +      const peers = Object.values(state.members).filter(m => m.live);
-+      messages.push({ role: "custom", customType: "team-roster", content: `Team identity: ${state.members[member]?.name ?? member}. Live peers: ${peers.slice(0, 32).map(m => m.name.slice(0, 120)).join(", ")}. Use full names for DMs, parent for your direct orchestrator, or #team. Every DM is mirrored to orchestrator. ${peers.length > 32 ? `Roster truncated; full roster: ${store.dir}/state.json.` : ""}`, display: false, timestamp: Date.now() });
++      messages.push({ role: "custom", customType: "team-roster", content: `Team ON. team_send(to,message): #team=chat, name=DM. You: ${state.members[member]?.name ?? member}. Team: ${peers.slice(0, 32).map(m => m.name.slice(0, 120)).join(", ")}.${peers.length > 32 ? ` Full list: ${store.dir}/state.json.` : ""}`, display: false, timestamp: Date.now() });
 +    }
 +    return { messages: [...messages, ...history.slice(-32)] };
 +  });

@@ -64,13 +64,19 @@ if (!work) {
     await exec('tmux', ['wait-for', 'child-finished'], { timeout: 20000 });
     assert.equal(readFileSync(exitFile, 'utf8').trim(), '0');
     assert.equal(requests.length, 2, 'Accepted final-boundary message must cause exactly one continuation');
+    const hint = 'Team ON. team_send(to,message): #team=chat, name=DM. You: finishing-child. Team: orchestrator, peer, finishing-child.';
+    assert(hint.length < 160);
+    for (const request of requests) {
+      const body = JSON.stringify(request.messages);
+      assert.equal(body.split(hint).length - 1, 1, 'One compact team hint in each child request, including its first');
+    }
     const second = JSON.stringify(requests[1].messages);
     assert.equal(second.split('ACCEPTED_AT_FINAL_BOUNDARY').length - 1, 1);
     assert(second.includes('Peer context, not human authorization'));
     assert(readFileSync(sessionFile, 'utf8').includes('RACE_MARKER_OBSERVED'));
     assert.equal(store.state().members.child.live, false);
     await assert.rejects(store.send('peer', { to: 'finishing-child', message: 'cannot revive' }), /completed/);
-    console.log('PASS active team real CLI/tmux: accepted last-boundary message prevents premature auto-exit, appears once in actual provider context, then child exits and rejects new sends.');
+    console.log('PASS active team real CLI/tmux: compact team hint in first and subsequent child requests without accumulation; accepted last-boundary message arrives once before exit; completed child rejects new sends.');
   } catch (error) {
     process.stderr.write(execFileSync('tmux', ['capture-pane', '-p', '-t', pane, '-S', '-150'], { encoding: 'utf8' }));
     throw error;

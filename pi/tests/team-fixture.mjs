@@ -113,6 +113,7 @@ try {
   await root.session.prompt('off schema');
   assert(!JSON.stringify(captures.get('root').at(-1).tools).includes('team_send'));
   assert(!captures.get('root').at(-1).systemPrompt.includes('team_send'));
+  assert(!JSON.stringify(captures.get('root').at(-1)).includes('Team ON.'));
   await root.session.prompt('/team on');
   await a.session.prompt('on schema');
   assert(a.api.getActiveTools().includes('team_send'));
@@ -324,6 +325,7 @@ try {
   await b.session.prompt('off propagation');
   assert(!JSON.stringify(captures.get('b').at(-1).tools).includes('team_send'));
   assert(!captures.get('b').at(-1).systemPrompt.includes('team_send'));
+  assert(!JSON.stringify(captures.get('b').at(-1)).includes('Team ON.'));
   const logBefore = readFileSync(join(stateDir, 'messages.jsonl'), 'utf8');
   await assert.rejects(store.send('a', { to: 'bob', message: 'off rejected' }), /OFF/);
   assert.equal(readFileSync(join(stateDir, 'messages.jsonl'), 'utf8'), logBefore);
