@@ -3,6 +3,24 @@
 @@ -7,1 +7,1 @@
 - * - Press alt+s or run /snippets to open the toggle menu (space: toggle,
 + * - Press ctrl+r or run /snippets to open the toggle menu (space: toggle,
+@@ -221,1 +221,1 @@
+-						hints = "↑↓ navigate • Space toggle • Tab preview • Enter apply • Esc cancel";
++						hints = "j/k or ↑↓ navigate • Space toggle • Tab preview • Enter apply • Esc cancel";
+@@ -229,1 +229,1 @@
+-						hints = "↑↓ scroll • Tab/Esc back";
++						hints = "j/k or ↑↓ scroll • Tab/Esc back";
+@@ -245,1 +245,1 @@
+-						if (matchesKey(data, Key.up)) {
++						if (matchesKey(data, Key.up) || matchesKey(data, "k")) {
+@@ -248,1 +248,1 @@
+-						} else if (matchesKey(data, Key.down)) {
++						} else if (matchesKey(data, Key.down) || matchesKey(data, "j")) {
+@@ -266,1 +266,1 @@
+-						if (matchesKey(data, Key.up)) {
++						if (matchesKey(data, Key.up) || matchesKey(data, "k")) {
+@@ -269,1 +269,1 @@
+-						} else if (matchesKey(data, Key.down)) {
++						} else if (matchesKey(data, Key.down) || matchesKey(data, "j")) {
 @@ -312,1 +312,1 @@
 -	pi.registerShortcut("alt+s", {
 +	pi.registerShortcut("ctrl+r", {

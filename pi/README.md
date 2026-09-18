@@ -717,8 +717,10 @@ PI_CODING_AGENT_DIR="$HOME/.pi/agent" node pi/tests/mcp-fixture.mjs --live
 [Prompt snippets](https://github.com/amosblomqvist/pi-config/tree/main/extensions/prompt-snippets)
 provides `/snippets` and Ctrl+R in the prompt editor. Setup applies
 `pi/patches/prompt-snippets.patch` to bind this shortcut; the session picker's
-Ctrl+R rename action remains separate. Select rules for the next message; toggles reset
-after sending. All seven snippet sources live together in
+Ctrl+R rename action remains separate. Use `j`/`k` or arrow keys to navigate and
+scroll previews, Space to toggle, and Enter to apply. Select rules for the next
+message; toggles reset after sending. Run `node pi/tests/snippets-fixture.mjs` to
+check the deployed picker's key handling and input transformation. All seven snippet sources live together in
 `pi/agent/extensions/prompt-snippets/snippets/`. This repo owns their contents;
 setup does not copy snippets from downloaded upstream sources. The six original
 snippets were imported from the pinned pi-config package alongside our KISS snippet.
