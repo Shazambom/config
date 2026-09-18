@@ -712,6 +712,28 @@ connects and lists Loki datasources, without querying logs or modifying Grafana:
 PI_CODING_AGENT_DIR="$HOME/.pi/agent" node pi/tests/mcp-fixture.mjs --live
 ```
 
+### Code review
+
+`/code-review [low|medium|high|xhigh|max] [--fix] [--comment] [target]` loads the
+bundled review skill. `/skill:code-review` accepts the same arguments. Medium is
+always the default: eight finder angles, one verifier per candidate, at most eight
+findings. Higher levels favor recall; low is hunk-only and skips tests and fixtures.
+Findings retain uncertainty labels. Counts are ceilings, not quotas.
+
+Review does not edit or publish unless the relevant flag is supplied. Local scope
+includes committed changes, tracked worktree edits, and non-ignored untracked files.
+Explicit PRs and revision ranges stay tied to their reviewed snapshots. Pi reports
+JSON in chat when no `ReportFindings` tool is available. No native Claude model
+routing or cloud review is emulated. Existing `/review` and `/codereview` are unchanged.
+
+`bash claude/test-code-review-setup.sh` checks seeding and preservation of local
+customizations; `bash pi/test.sh` checks command and skill expansion.
+`bash claude/test-code-review-live.sh --run` uses real model quota and an isolated
+tmux server to review a planted bug through the default command. It preserves
+proof artifacts and checks that the reviewed source and index stayed unchanged.
+Append `low` to test the hunk-only path or `fix` to test a safe low-effort fix in
+the disposable fixture. These checks do not post GitHub comments.
+
 ### Prompt snippets
 
 [Prompt snippets](https://github.com/amosblomqvist/pi-config/tree/main/extensions/prompt-snippets)

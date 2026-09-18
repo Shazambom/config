@@ -43,6 +43,11 @@ if [[ "$live" == false ]]; then
   rpc 11 '{"id":"11","type":"clear_queue"}'
   rpc 12 '{"id":"12","type":"steer","message":"/design rust fixture-plan"}'
   rpc 13 '{"id":"13","type":"clear_queue"}'
+  rpc 14 '{"id":"14","type":"steer","message":"/code-review high --fix fixture-path"}'
+  rpc 15 '{"id":"15","type":"clear_queue"}'
+  rpc 16 '{"id":"16","type":"steer","message":"/skill:code-review medium fixture-path"}'
+  rpc 17 '{"id":"17","type":"clear_queue"}'
+  diff -qr "$repo/claude/skills/code-review" "$HOME/.claude/skills/code-review"
   for file in golang.md python.md rust.md design.py.txt support.py.txt design.rs.txt support.rs.txt; do
     cmp "$repo/claude/skills/design/references/$file" "$HOME/.claude/skills/design/references/$file"
   done
@@ -71,6 +76,10 @@ jq -es --argjson live "$live" --arg home "$HOME" '
     check(any(.[]; .name == "skill:example" and .path == $home + "/.claude/skills/example/SKILL.md"); "Skill source path mismatch") |
     check(any(.[]; .name == "skill:design" and .path == $home + "/.claude/skills/design/SKILL.md"); "Missing bundled design skill") |
     check(any(.[]; .name == "design" and .source == "prompt"); "Missing /design alias") |
+    check(any(.[]; .name == "code-review" and .source == "prompt"); "Missing /code-review alias") |
+    check(any(.[]; .name == "skill:code-review" and .path == $home + "/.claude/skills/code-review/SKILL.md"); "Missing bundled code-review skill") |
+    check(($responses[14].steering | length) == 1 and ($responses[14].steering[0] | contains("high --fix fixture-path")); "Code review alias lost arguments") |
+    check(($responses[16].steering | length) == 1 and ($responses[16].steering[0] | contains("medium fixture-path")) and ($responses[16].steering[0] | contains("skills/code-review")); "Code review skill expansion failed") |
     check(($responses[8].steering | length) == 1 and ($responses[8].steering[0] | contains("python fixture-plan")); "Python design arguments lost") |
     check(($responses[10].steering | length) == 1 and ($responses[10].steering[0] | contains("golang fixture-plan")); "Go design arguments lost") |
     check(($responses[12].steering | length) == 1 and ($responses[12].steering[0] | contains("rust fixture-plan")); "Rust design arguments lost") |

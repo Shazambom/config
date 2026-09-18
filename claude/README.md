@@ -7,6 +7,8 @@ stay intact. To opt into a bundled update, move that global command or skill
 aside and rerun init. Setup does not synchronize edits back into this repository.
 Exact known Markdown, plain-text, and prior Go versions of `design` are archived
 outside skill discovery before seeding the updated skill; customized directories remain untouched.
+The exact initial `code-review` bundle also receives a private backup before its
+update. Setup preserves customized review skills and commands.
 
 ## Sources
 
@@ -14,8 +16,17 @@ outside skill discovery before seeding the updated skill; customized directories
   `prove-it.md`, and `blast-radius.md`.
 - `~/Scheduler/.claude`: the `grafana-logs` skill and 19 commands. All commands
   other than the three listed above came from Scheduler.
-- Claude Code built-ins: the `simplify` skill, transcribed from the CLI's
-  bundled skill text (not present on disk in any Claude config).
+- Claude Code built-ins: `simplify`, transcribed from the CLI's bundled skill
+  text, and `code-review`, adapted from the supplied internal prompt extraction.
+  `/code-review` defaults to medium: eight independent finder angles, up to six
+  candidates each, one verifier per candidate, and at most eight findings.
+  Levels `low`, `high`, `xhigh`, and `max` adjust coverage and caps. `--fix`
+  authorizes safe local fixes; `--comment` authorizes inline comments on an
+  explicitly identified PR. Without those flags, review is read-only.
+  Pi receives chat JSON when `ReportFindings` is unavailable. Native model-specific
+  routing and cloud review are not emulated. See `skills/code-review/references/origin.md`
+  for the adaptations and excerpt limits. Existing `/review` and `/codereview`
+  templates remain separate.
 - Repository-authored: `design`, an approval-gated contract and data-flow review
   loop. `/design golang`, `/design python`, and `/design rust` select its document
   language; `/skill:design` accepts the same selectors and plan arguments. The

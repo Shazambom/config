@@ -110,6 +110,39 @@ migrate_bundled_arena() {
 }
 migrate_bundled_arena
 
+migrate_bundled_code_review() {
+  local target="$destination/skills/code-review" backup="$destination/code-review-skill-backup-seed-v1"
+  local expected relative digest entry count=0
+  local -a hash_command
+  [[ ! -L "$destination" && ! -L "$destination/skills" && -d "$target" && ! -L "$target" ]] || return 0
+  [[ ! -e "$backup" && ! -L "$backup" && -f "$source_root/skills/code-review/SKILL.md" ]] || return 0
+  if command -v shasum >/dev/null 2>&1; then hash_command=(shasum -a 256)
+  elif command -v sha256sum >/dev/null 2>&1; then hash_command=(sha256sum)
+  else return 0; fi
+  while IFS= read -r -d '' entry; do
+    [[ ! -L "$entry" ]] || return 0
+    count=$((count + 1))
+  done < <(find "$target" -mindepth 1 -print0)
+  [[ "$count" == 7 ]] || return 0
+  while read -r expected relative; do
+    [[ -f "$target/$relative" ]] || return 0
+    digest="$("${hash_command[@]}" < "$target/$relative")" || return 0
+    [[ "${digest%% *}" == "$expected" ]] || return 0
+  done <<'CODE_REVIEW_SEED'
+2d76f548e597936f4d8bb9a78e91e86f320bedec676722190593d60218ea1965 SKILL.md
+9f4227c445e90f344c521a1605a0551e1c195fa60c585ea3e8829e2a838de5a2 references/actions.md
+fea96bf5e2fe946abade0cfd18f9be59153d4fe5e017ec8631937e701b4cf48c references/angles.md
+03f0047f732cf83cda10f51532a473d6882f68edfacfb3fdbac8f82b5d8de523 references/levels.md
+269a3f84a58def88053a8bd5e21ee4fa1c10e2b0f61ca594fa2f218a3f2170aa references/origin.md
+6f1e90fb521f9f1aaeaa5c0e379efb0dd4834dcde0ba782fe18da41fa1d8c556 references/scope.md
+CODE_REVIEW_SEED
+  diff -qr "$target" "$source_root/skills/code-review" >/dev/null && return 0
+  mkdir -m 700 "$backup" || return 0
+  mv "$target" "$backup/code-review"
+  printf 'Backed up bundled code-review skill to %s\n' "$backup/code-review"
+}
+migrate_bundled_code_review
+
 for source in "$source_root/skills"/*; do
   [[ -d "$source" ]] || continue
   target="$destination/skills/${source##*/}"
