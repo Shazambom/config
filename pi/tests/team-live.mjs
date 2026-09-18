@@ -39,6 +39,7 @@ const loader = new DefaultResourceLoader({
     });
     pi.on('before_provider_request', (event, ctx) => {
       const record = {
+        at: Date.now(),
         model: `${ctx.model.provider}/${ctx.model.id}`,
         tools: (event.payload.tools ?? []).map(tool => tool.name ?? tool.function?.name).filter(Boolean),
         systemMentionsTeam: ctx.getSystemPrompt().includes('team_send'),
@@ -63,11 +64,26 @@ const { session } = await createAgentSession({
 const errors = [];
 await session.bindExtensions({ mode: 'print', onError: error => errors.push(error) });
 const messages = [];
+const rootTools = [];
+const rootInputs = new Map();
+const completionTimes = new Map();
+const writeListeners = new Set();
 session.subscribe(event => {
+  if (event.type === 'tool_execution_start') {
+    rootInputs.set(event.toolCallId, { to: event.args?.to, reply_to: event.args?.reply_to, path: event.args?.path });
+  }
+  if (event.type === 'tool_execution_end') {
+    const record = { at: Date.now(), name: event.toolName, ...rootInputs.get(event.toolCallId), isError: event.isError, status: event.result?.details?.status };
+    rootInputs.delete(event.toolCallId);
+    rootTools.push(record);
+    appendFileSync(join(proof, 'root-tools.jsonl'), JSON.stringify(record) + '\n');
+    for (const listener of writeListeners) listener(record);
+  }
   if (event.type !== 'message_end') return;
   const message = event.message;
   if (message.role === 'custom') {
     messages.push(message);
+    if (message.customType === 'subagent_result') completionTimes.set(message.details?.name, Date.now());
     appendFileSync(join(proof, 'messages.jsonl'), JSON.stringify(message) + '\n');
     if (message.customType.includes('team')) console.log(JSON.stringify(message));
   }
@@ -102,7 +118,16 @@ const waitReceipt = (marker, fromName) => new Promise((accept, reject) => {
   receiptListeners.add(listener);
 });
 const completion = name => waitMessage(message => message.customType === 'subagent_result' && message.details?.name === name, `${name} completes`);
-const initialFrame = 'This is a bounded collaboration verification in a temporary directory. Do not access credentials or unrelated files. The driver assigns work. Until the driver explicitly asks for synthesis, acknowledge results briefly without calling tools, delegating, replying to readiness, or writing output.';
+const initialFrame = 'This is a bounded collaboration verification in a temporary directory. Do not access credentials or unrelated files. The driver assigns work. Do not delegate.';
+const waitForAnswerWrite = () => new Promise((accept, reject) => {
+  const matches = record => record.name === 'write' && !record.isError && typeof record.path === 'string' && resolve(cwd, record.path) === join(cwd, 'answer.json');
+  const existing = rootTools.find(matches);
+  if (existing) { accept(existing); return; }
+  const listener = record => { if (matches(record)) { clearTimeout(timer); writeListeners.delete(listener); accept(record); } };
+  const timer = setTimeout(() => { writeListeners.delete(listener); reject(new Error('Orchestrator did not autonomously write answer.json')); }, 180000);
+  timer.unref();
+  writeListeners.add(listener);
+});
 
 async function run() {
   assert(!session.agent.state.tools.some(tool => tool.name === 'team_send'));
@@ -111,6 +136,10 @@ async function run() {
   assert.equal(requests.at(-1).systemMentionsTeam, false);
   await session.prompt('/team on');
   assert(session.agent.state.tools.some(tool => tool.name === 'team_send'));
+  await session.prompt('Coordinate actively from incoming peer messages. The driver will launch duration-worker and planner. When you have received both DURATION_READY from duration-worker and the mirrored PLANNER_DURATION_REQUEST from planner, reply ONCE to duration-worker using team_send with reply_to equal to the DURATION_READY message ID, telling it to proceed and answer planner. Do not answer the planner yourself. After planner broadcasts PLANNER_RESULT, read planner/schedule.json, independently verify dependency ordering, two-worker capacity and critical-path lower bound using the mirrored DURATION_REPLY, and write answer.json with the same schema. Do not read durations/durations.json or change child files. Use write for answer.json. No further user prompt will arrive: react to the messages. Do not echo or acknowledge every broadcast. Reply READY now, then wait for actual messages.');
+  await session.waitForIdle();
+  const answerWritten = waitForAnswerWrite();
+  answerWritten.catch(() => {});
   mkdirSync(join(cwd, 'durations'));
   mkdirSync(join(cwd, 'planner'));
   const duration = { A: 2, B: 3, C: 4, D: 2, E: 1, F: 3 };
@@ -133,17 +162,19 @@ async function run() {
   const question = waitReceipt('PLANNER_DURATION_REQUEST', 'planner');
   await call('subagent', {
     agent: 'worker', name: 'planner', cwd: join(cwd, 'planner'),
-    task: 'Read only dependencies.json for problem data. Find the minimum completion time for these nonpreemptive tasks on two identical workers. Durations are owned by duration-worker; do not inspect its files or use shell/grep to obtain them. Ask team_send to duration-worker with message PLANNER_DURATION_REQUEST: please provide durations, worker count and verification_code, and wait_for_reply:true. Use the returned answer to compute a valid optimal schedule. Write only schedule.json here as JSON with keys start (task -> integer start time), makespan (integer), critical_path (array of task names), verification_code (exact code from the reply). Broadcast a concise result to #team without the verification code. Do not delegate, edit other files, or ask the orchestrator for durations. Then finish.',
+    task: 'Read only dependencies.json for problem data. Find the minimum completion time for these nonpreemptive tasks on two identical workers. Durations are owned by duration-worker; do not inspect its files or use shell/grep to obtain them. Ask team_send to duration-worker with message PLANNER_DURATION_REQUEST: please provide durations, worker count and verification_code, and wait_for_reply:true. Use the returned answer to compute a valid optimal schedule. Write only schedule.json here as JSON with keys start (task -> integer start time), makespan (integer), critical_path (array of task names), verification_code (exact code from the reply). Broadcast a concise result beginning PLANNER_RESULT to #team without the verification code. Do not delegate, edit other files, or ask the orchestrator for durations. Then finish.',
   });
   await question;
-  await call('team_send', { to: 'duration-worker', message: 'Proceed. Answer the planner question now queued for you.', reply_to: readyId });
   const results = await Promise.all([supplied, planned]);
   for (const result of results) {
     assert(!result.details.error && !result.details.errorMessage, 'Child failed');
     assert.equal(result.details.exitCode, 0);
   }
+  await answerWritten;
   await session.waitForIdle();
-  await session.prompt('Now synthesize. Read planner/schedule.json, independently verify its dependency order, two-worker capacity and critical-path lower bound. Write answer.json with the same schema and the verified schedule. Do not delegate, read durations/durations.json, or change child files. You can use the durations already present in the mirrored DURATION_REPLY. Report any disagreement rather than guessing.');
+  assert.equal(rootTools.filter(tool => tool.name === 'team_send' && tool.reply_to === readyId && !tool.isError && tool.status === 'sent').length, 1, 'Orchestrator must autonomously send one correlated readiness reply');
+  const firstCompletion = Math.min(...completionTimes.values());
+  assert(requests.some(request => request.at < firstCompletion && request.receiptIds.includes(readyId)), 'Peer notification must wake the root before any ordinary child-completion notification');
   const answer = JSON.parse(readFileSync(join(cwd, 'answer.json'), 'utf8'));
   assert.equal(answer.verification_code, code);
   assert.equal(answer.makespan, 11);
@@ -169,13 +200,16 @@ async function run() {
     const entries = readFileSync(result.details.sessionFile, 'utf8').trim().split('\n').map(line => JSON.parse(line));
     const calls = entries.flatMap(entry => entry.message?.role === 'assistant' ? entry.message.content.filter(item => item.type === 'toolCall') : []);
     assert(calls.some(item => item.name === 'team_send'), 'Actual child must use the messaging tool');
-    if (result.details.name === 'planner') assert(entries.some(entry => entry.message?.toolName === 'team_send' && JSON.stringify(entry.message.content).includes(peerReply.id) && JSON.stringify(entry.message.content).includes(code)), 'Actual waiting tool result must contain the peer reply and its unpredictable input code');
+    if (result.details.name === 'planner') assert(entries.some(entry => {
+      const received = entry.message?.toolName === 'team_send' || (entry.message?.role === 'custom' && entry.message.customType?.startsWith('team-')) || entry.customType === 'team-peer-history';
+      return received && JSON.stringify(entry.message ?? entry.data).includes(peerReply.id) && JSON.stringify(entry.message ?? entry.data).includes(code);
+    }), 'Actual tool reply or native peer delivery must contain the unpredictable input code');
     const forbidden = result.details.name === 'planner' ? 'durations.json' : 'dependencies.json';
     assert(!calls.some(item => item.name === 'read' && item.arguments.path?.endsWith(forbidden)), 'Child read another assignment\'s private input');
     assert(calls.every(item => ['read', 'write', 'bash', 'team_send'].includes(item.name)), 'Unexpected task delegation or alternative input access');
     assert(!calls.some(item => item.name === 'bash' && item.arguments.command.includes(forbidden)), 'Shell accessed the other assignment\'s input');
   }
-  console.log('PASS: real agents asked and answered a peer DM, orchestrator received both once, public broadcast delivered, and independently checked schedule has makespan 11 with matching private-input verification code.');
+  console.log('PASS: peer messages woke the real idle orchestrator before any child completion; it autonomously replied once and synthesized without another user prompt. Peer question/answer and broadcasts delivered; checked optimal makespan 11 and private-input code.');
   const staleTool = session.agent.state.tools.find(tool => tool.name === 'team_send');
   await session.prompt('/team off');
   assert(!session.agent.state.tools.some(tool => tool.name === 'team_send'));

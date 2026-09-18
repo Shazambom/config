@@ -466,14 +466,23 @@ The normal `subagent_message` steering path works in either mode.
 While enabled, agents use one tool, `team_send(to, message)`. `#team` broadcasts;
 a live peer's name sends a DM. `orchestrator` addresses the root and `parent`
 addresses the immediate delegator. The root sees every DM, including peer-to-peer
-messages. Replies use `reply_to`; optional `wait_for_reply` keeps a question's
-sender alive for up to 60 seconds. Completed agents are not restarted by messages.
-Peer messages never authorize reassignment or changes outside an agent's scope.
+messages. Every addressed message or broadcast actively notifies its live recipients,
+including the root's copies of peer DMs. Idle recipients wake without a user prompt;
+busy recipients receive native steering at their next safe turn boundary. Notifications
+are visible in the recipient transcript. Recipients should respond when useful, not
+automatically echo or acknowledge each notification.
+
+Replies use `reply_to`; optional `wait_for_reply` keeps a question's sender alive
+for up to 60 seconds. An unrelated incoming message interrupts that tool wait so
+the agent can handle it. The original question remains pending until its answer,
+original deadline, cancellation, or mode change. Completed agents are not restarted
+by messages. Peer messages never authorize reassignment or changes outside an agent's scope.
 
 `/team` reports the mode and log path. The private conversation log lives under
 `~/.pi/teams/<root-session-id>/messages.jsonl`, outside Git. DMs are directed
-messages, not a filesystem security boundary. Root mirrors do not wake the model
-for every message. They enter its context at the next request.
+messages, not a filesystem security boundary. Turning communication off stops new
+notifications and discards unread messages. It does not retract messages already
+read or interrupt unrelated work.
 
 `/arena <task>` and `/skill:arena <task>` run the arena skill through a dedicated
 coordinator. Communication is suspended across the tree before it starts. The
@@ -497,7 +506,9 @@ bash pi/test-team-live.sh --run  # Real models and tmux; uses account quota
 
 The live exercise gives two agents separate inputs to a scheduling problem. They
 must exchange a question and reply, deliver both DMs to the orchestrator, and
-produce a checked schedule. It preserves the receipts, provider tool inventories,
+produce a checked schedule. The orchestrator must wake on those messages, reply,
+and synthesize without another user prompt; it cannot rely on ordinary child
+completion notifications to start reacting. It preserves the receipts, provider tool inventories,
 and output artifacts in a printed private temporary directory. Its tmux server is
 isolated from working panes; it does not copy credentials.
 
