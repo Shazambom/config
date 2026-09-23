@@ -79,7 +79,16 @@ if [[ ! -f "$review_dir/component-upstream.ts" ]]; then
 fi
 cp "$review_dir/component-upstream.ts" "$stage/component.ts"
 cp "$review_root/index-upstream.ts" "$stage/index.ts"
-(cd "$stage"; git apply "$repo/pi/patches/diff-review-colors.patch"; git apply "$repo/pi/patches/diff-review-ui.patch"; git apply "$repo/pi/patches/diff-review-filter.patch")
+for file in workspace-comments types; do
+  [[ -f "$review_dir/$file-upstream.ts" ]] || cp "$review_dir/$file.ts" "$review_dir/$file-upstream.ts"
+  cp "$review_dir/$file-upstream.ts" "$stage/$file.ts"
+done
+(cd "$stage"; git apply "$repo/pi/patches/diff-review-colors.patch"; git apply "$repo/pi/patches/diff-review-ui.patch"; git apply "$repo/pi/patches/diff-review-filter.patch"; git apply --unidiff-zero "$repo/pi/patches/diff-review-comments.patch")
+cp "$repo/pi/overrides/review-comments.ts" "$stage/review-comments.ts"
+mv "$stage/review-comments.ts" "$review_root/review-comments.ts"
+for file in workspace-comments types; do
+  mv "$stage/$file.ts" "$review_dir/$file.ts"
+done
 cp "$repo/pi/overrides/diff-filter.ts" "$stage/diff-filter.ts"
 mv "$stage/diff-filter.ts" "$review_root/diff-filter.ts"
 cp "$repo/pi/overrides/diff-ui.ts" "$stage/diff-ui.ts"

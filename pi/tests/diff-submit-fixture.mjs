@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import { createJiti } from 'jiti';
 import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from '@earendil-works/pi-coding-agent';
 import { createAssistantMessageEventStream, InMemoryCredentialStore } from '@earendil-works/pi-ai';
+import { KeybindingsManager } from '../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js';
 
 const [cwd, agentDir] = process.argv.slice(2);
 const jiti = createJiti(import.meta.url);
 const { registerDiffReviewCommand, registerViewCommand } = await jiti.import('../node_modules/pi-diff-review/src/index.ts');
-const { buildGlobalComment } = await jiti.import('../node_modules/pi-diff-review/src/review/comments.ts');
 const settingsManager = SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false } });
 const loader = new DefaultResourceLoader({ cwd, agentDir, settingsManager, noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, agentsFilesOverride: () => ({ agentsFiles: [] }) });
 await loader.reload();
@@ -43,6 +43,8 @@ for (const commandName of ['diff', 'view']) {
     const deliveries = [];
     const commands = new Map();
     const pi = {
+      registerTool() {},
+      events: { emit() {} },
       registerCommand: (name, value) => commands.set(name, value),
       appendEntry: (type, data) => sessionManager.appendCustomEntry(type, data),
       sendUserMessage(content, options) {
@@ -53,9 +55,23 @@ for (const commandName of ['diff', 'view']) {
     registerDiffReviewCommand(pi);
     registerViewCommand(pi);
     const commentText = `Feedback ${commandName}/${busy}: keep \"quotes\" and café.\nSecond line.`;
-    const comment = buildGlobalComment(commentText);
-    let result = { action: 'cancel' };
-    const ctx = { cwd, sessionManager, ui: { custom: async () => result, notify() {} } };
+    let interaction = 'cancel';
+    let submitted;
+    const ctx = { cwd, sessionManager, ui: { custom: async factory => new Promise(resolve => {
+      const tui = { terminal: { rows: 40, columns: 120 }, requestRender() {} };
+      const theme = { fg: (_color, text) => text, bg: (_color, text) => text, bold: text => text };
+      const component = factory(tui, theme, new KeybindingsManager(), value => { submitted = value; resolve(value); });
+      if (interaction === 'submit') {
+        component.handleInput('C');
+        component.handleInput(`\x1b[200~${commentText}\x1b[201~`);
+        component.handleInput('\r');
+        component.handleInput('\r');
+      } else {
+        if (interaction === 'empty') component.handleInput('\r');
+        component.handleInput('q');
+      }
+      component.dispose();
+    }), notify() {} } };
     const handler = commands.get(commandName).handler;
     const args = commandName === 'view' ? 'staged' : '';
     let running;
@@ -66,10 +82,10 @@ for (const commandName of ['diff', 'view']) {
         assert(session.isStreaming);
       }
       await handler(args, ctx);
-      result = { action: 'submit', comments: [] };
+      interaction = 'empty';
       await handler(args, ctx);
       assert.equal(sends.length, 0);
-      result = { action: 'submit', comments: [comment] };
+      interaction = 'submit';
       await handler(args, ctx);
       assert.equal(sends.length, 1);
       assert.deepEqual(sends[0].options, { deliverAs: 'steer' });
@@ -87,7 +103,10 @@ for (const commandName of ['diff', 'view']) {
       assert.equal(session.messages.filter(message => message.role === 'user' && textOf(message) === sends[0].content).length, 1);
       assert.equal(requests.at(-1).filter(message => message.role === 'user' && textOf(message) === sends[0].content).length, 1);
       assert.deepEqual(session.getSteeringMessages(), []);
-      assert.equal(comment.text, commentText);
+      assert.equal(submitted.comments[0].text, commentText);
+      assert(submitted.comments[0].reviewId && submitted.comments[0].revision);
+      assert(sends[0].content.includes(`[review_comment id=${submitted.comments[0].reviewId} revision=${submitted.comments[0].revision}]`));
+      assert(sends[0].content.includes('call review_comments with action=resolve'));
     } finally {
       releaseFirst();
       await running;

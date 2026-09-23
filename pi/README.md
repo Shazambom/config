@@ -367,6 +367,14 @@ selected model/account; it sends the excerpt and consumes quota. Merely viewing
 a diff needs no model call. `/diff --turn-based` offers experimental reviewed-hunk
 tracking with `M`, using the complete diff when no Git arguments are supplied.
 
+Comment editors reuse the installed Vim mode and start in INSERT. Escape enters
+NORMAL; `i` returns to INSERT. Motions, visual selection, change/delete/yank/paste,
+`u`, and Alt+R work inside the comment. Enter saves it; Enter in the review then
+submits the comments and closes the view. Pending Vim searches and Ex commands
+consume Enter themselves. Escape in NORMAL with no pending command cancels the
+edit, and Ctrl+C cancels directly. Ctrl+R does not open prompt snippets inside a
+comment. `/vimmode off` restores plain comment editing as well as the plain prompt.
+
 `pi/overrides/diff-source.ts` adapts the pinned package's TypeScript source API.
 `init.sh --pi` preserves the upstream module and deploys this adapter into the
 local package. Setup checks the upstream SHA-256 and refuses an incompatible
@@ -390,9 +398,23 @@ copy mode and scroll terminal history rather than the diff.
 
 Instructions ask Pi to offer a checkpoint after substantial production changes,
 not pop up after every edit. This is post-change review, not a permission gate.
+Submitting comments closes the review and sends the feedback to the agent. Each
+submitted comment includes an ID and revision. After addressing it, the agent uses
+`review_comments` to mark that version resolved. Reopening `/diff` or `/view` omits
+resolved comments. Unaddressed comments remain open; newer edits cannot be resolved
+using an older revision. Resolving feedback is not human approval of the code.
+
 Comments persist in Pi sessions and a Git-local `pi-diff-review-comments.json`
 store; outside Git the fallback is `.pi-diff-review-comments.json` in the working
-directory. Treat these as private review data, not files to commit.
+directory. Resolved records remain stored, but are hidden from active reviews.
+Workspace-backed line comments are shared between `/diff` and `/view`; overall
+and deleted-line comments retain their original session/review scope. Treat these
+stores as private review data, not files to commit.
+
+Run `bash pi/test-review-comments-live.sh --run` for the real-agent terminal test.
+It submits feedback through both commands, checks the agent's edits and resolution
+tool calls, and reopens the reviews to verify the comments are gone. This opt-in
+test uses the configured model account and consumes quota.
 
 ### Interactive subagents
 

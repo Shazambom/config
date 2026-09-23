@@ -76,7 +76,7 @@ try {
   assert.deepEqual(reviewOptions(' --all-files  --cached -- x'), { args: '--cached -- x', allFiles: true });
   const commands = new Map();
   const entries = [];
-  const pi = { registerCommand: (name, value) => commands.set(name, value), appendEntry: (customType, data) => entries.push({ type: 'custom', customType, data }), sendUserMessage() { throw new Error('No model sends expected'); } };
+  const pi = { registerTool() {}, registerCommand: (name, value) => commands.set(name, value), appendEntry: (customType, data) => entries.push({ type: 'custom', customType, data }), sendUserMessage() { throw new Error('No model sends expected'); } };
   registerDiffReviewCommand(pi); registerViewCommand(pi);
   let opened;
   let notes;

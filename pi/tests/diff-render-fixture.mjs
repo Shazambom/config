@@ -16,7 +16,7 @@ const { ReviewComponent } = await jiti.import(process.env.DIFF_TEST_COMPONENT);
 const indexPath = new URL('../index.ts', pathToFileURL(process.env.DIFF_TEST_COMPONENT));
 const { registerDiffReviewCommand, registerViewCommand } = await jiti.import(indexPath.href);
 const commands = new Map();
-const api = { registerCommand: (name, command) => commands.set(name, command) };
+const api = { registerTool() {}, registerCommand: (name, command) => commands.set(name, command) };
 registerDiffReviewCommand(api);
 registerViewCommand(api);
 assert(commands.has('diff') && commands.has('view'));

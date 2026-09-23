@@ -1,95 +1,69 @@
 --- a/src/vim-editor.ts
 +++ b/src/vim-editor.ts
-@@ -6,6 +6,7 @@
- import {
-   truncateToWidth,
-   visibleWidth,
+@@ -8,0 +9 @@
 +  matchesKey,
-   type EditorTheme,
-   type OverlayHandle,
-   type TUI,
-@@ -341,9 +342,20 @@
-     if (this.agentBusy === active) return;
-     this.agentBusy = active;
-     this.syncHardwareCursorVisibility(this.getCurrentCursorStyle());
+@@ -225,0 +227 @@
++  embedded?: boolean;
+@@ -243,0 +246 @@
++  private readonly embedded: boolean;
+@@ -259,0 +263 @@
++    this.embedded = vimOptions?.embedded ?? false;
+@@ -274,0 +279,4 @@
 +  }
 +
++  isVimInputPending(): boolean {
++    return !!(this.modalState.pendingSearch || this.modalState.pendingEx || this.modalState.pending || this.getPendingOperator());
+@@ -345,0 +354,6 @@
 +  override setText(text: string): void {
 +    // Pi restores unchanged drafts after custom UI; keep the visual cursor/anchor.
 +    if (text === this.getText()) return;
 +    super.setText(text);
-   }
- 
-   override handleInput(data: string): void {
-+    // Ctrl-R is Portable Pi's global snippets shortcut, including in visual mode.
++  }
++
+@@ -346,0 +361,4 @@
 +    if (matchesKey(data, "ctrl+r")) {
-+      super.handleInput(data);
++      if (!this.embedded) super.handleInput(data);
 +      return;
 +    }
-     const keymap = keymapForOptions(this.options);
-     if (
-       canFastDelegateInsertInput(this.modalState, data, {
-@@ -356,6 +368,11 @@
-       return;
-     }
- 
+@@ -357,0 +376,5 @@
++
 +    // Vim edits need real text, not Pi's opaque collapsed-paste markers.
 +    // Public setText moves the cursor to the end and records an undo snapshot.
 +    const expanded = this.getExpandedText();
 +    if (expanded !== this.getText()) this.setText(expanded);
-+
-     const update = handleModalInput(
-       this.modalState,
-       this.snapshot(),
-@@ -673,7 +690,7 @@
-   }
- 
-   private redoSnapshot(): RedoSnapshot {
+@@ -676 +699 @@
 -    return { text: this.getText(), cursor: this.getCursor() };
 +    return { text: this.getExpandedText(), cursor: this.getCursor() };
-   }
- 
-   private clearRedoStack(): void {
-@@ -687,6 +704,10 @@
-   private applyUndo(): void {
-     const before = this.redoSnapshot();
-     super.handleInput(KEY.undo);
+@@ -689,0 +713,4 @@
 +    // Materialization is representation-only; undo past it to the user's edit.
 +    if (this.getText() !== this.getExpandedText() && this.getExpandedText() === before.text) {
 +      super.handleInput(KEY.undo);
 +    }
-     if (!sameRedoSnapshot(before, this.redoSnapshot())) this.redoStack.push(before);
-   }
- 
 --- a/src/lifecycle.ts
 +++ b/src/lifecycle.ts
-@@ -161,6 +161,8 @@
-     return;
-   }
-   state.previousEditorFactory = current;
+@@ -163,0 +164,2 @@
 +  // Pi 0.85 copies getText(), which otherwise loses collapsed paste payloads.
 +  ctx.ui.setEditorText(ctx.ui.getEditorText());
-   ctx.ui.setEditorComponent(state.editorFactory);
-   state.hasInstalledFactory = true;
- }
-@@ -256,6 +258,7 @@
-   state.agentBusy = false;
-   resetKnownEditors(state);
-   if (ctx.ui.getEditorComponent() === state.editorFactory) {
+@@ -258,0 +261 @@
 +    ctx.ui.setEditorText(ctx.ui.getEditorText());
-     ctx.ui.setEditorComponent(state.previousEditorFactory);
-     state.hasInstalledFactory = false;
-   }
-@@ -312,7 +315,8 @@
-     for (const editor of state.editors) editor.setAgentBusy(false);
-     observeInstall(installEditor(state, ctx), ctx);
-   });
+@@ -303,0 +307,12 @@
++  const unsubscribeEmbedded = pi.events.on("portable-vim:editor", (request: {
++    tui: ConstructorParameters<typeof VimEditor>[0];
++    theme: ConstructorParameters<typeof VimEditor>[1];
++    keybindings: ConstructorParameters<typeof VimEditor>[2];
++    provide: (editor: VimEditor) => void;
++    onCancel: () => void;
++  }) => {
++    if (!state.enabled) return;
++    const current = state.config.configuration();
++    const plan = createVimConfigPlan({ ...current.plan.options, startMode: "insert" }, []);
++    request.provide(new VimEditor(request.tui, request.theme, request.keybindings, { plan, diagnostics: plan.diagnostics }, { embedded: true, onShutdown: request.onCancel }));
++  });
+@@ -315 +330,3 @@
 -  pi.on("session_shutdown", (event) => {
 +  pi.on("session_shutdown", (event, ctx) => {
++    unsubscribeEmbedded();
 +    if (event.reason === "reload") ctx.ui.setEditorText(ctx.ui.getEditorText());
-     state.agentBusy = false;
-     state.config.invalidate();
-     state.installGeneration += 1;
 --- /dev/null
 +++ b/release-notes.json
 @@ -0,0 +1,4 @@

@@ -1,0 +1,281 @@
+--- a/index.ts
++++ b/index.ts
+@@ -1,0 +1,2 @@
++import { Editor } from "@earendil-works/pi-tui";
++import { ReviewComments, registerReviewComments, resolutionInstructions } from "./review-comments.ts";
+@@ -15 +16,0 @@
+-  getCachedComments,
+@@ -19 +19,0 @@
+-  persistCachedComments,
+@@ -42,0 +43 @@
++  registerReviewComments(pi);
+@@ -167,5 +168,2 @@
+-  const cachedComments = getCachedComments(ctx, options.cacheKey);
+-  const comments = workspaceStore.getVisibleComments(options.reviewLines);
+-  for (const [id, comment] of cachedComments) {
+-    comments.set(id, comment);
+-  }
++  const lifecycle = new ReviewComments(pi, ctx, options.cacheKey, options.reviewLines, workspaceStore);
++  const comments = lifecycle.load();
+@@ -177,6 +174,0 @@
+-  if (cachedComments.size > 0) {
+-    ctx.ui.notify(
+-      `Restored ${cachedComments.size} cached review comment${cachedComments.size === 1 ? "" : "s"}.`,
+-      "info",
+-    );
+-  }
+@@ -226,2 +218,2 @@
+-    (tui, theme, _keybindings, done) => {
+-      return new ReviewComponent(
++    (tui, theme, keybindings, done) => {
++      const component = new ReviewComponent(
+@@ -235,7 +227 @@
+-        (updatedComments) => {
+-          persistCachedComments(pi, options.cacheKey, updatedComments.values());
+-          workspaceStore.syncFromComments(
+-            options.reviewLines,
+-            updatedComments.values(),
+-          );
+-        },
++        (updatedComments) => lifecycle.save(updatedComments),
+@@ -253,0 +240,5 @@
++        (editorTheme, onCancel) => {
++          let editor: Editor | undefined;
++          pi.events.emit("portable-vim:editor", { tui, theme: editorTheme, keybindings, onCancel, provide: (value: Editor) => { editor = value; } });
++          return editor ?? new Editor(tui as never, editorTheme, { keybindings });
++        },
+@@ -254,0 +246,9 @@
++      const handleInput = component.handleInput.bind(component);
++      component.handleInput = (data: string) => {
++        try { handleInput(data); }
++        catch (error) {
++          ctx.ui.notify(`Unable to save review comment: ${error instanceof Error ? error.message : error}`, "error");
++          tui.requestRender();
++        }
++      };
++      return component;
+@@ -261 +260,0 @@
+-    persistCachedComments(pi, options.cacheKey, []);
+@@ -265,2 +264,6 @@
+-  persistCachedComments(pi, options.cacheKey, []);
+-  pi.sendUserMessage(options.buildPrompt(result.comments), { deliverAs: "steer" });
++  try {
++    const submitted = lifecycle.submit(result.comments);
++    pi.sendUserMessage(options.buildPrompt(submitted) + resolutionInstructions(submitted), { deliverAs: "steer" });
++  } catch (error) {
++    ctx.ui.notify(`Unable to submit review comments: ${error instanceof Error ? error.message : error}`, "error");
++  }
+--- a/component.ts
++++ b/component.ts
+@@ -6,0 +7 @@
++  type EditorTheme,
+@@ -110 +111,3 @@
+-  private editor: Editor;
++  private editor: Editor & { getVimMode?: () => string; isVimInputPending?: () => boolean; resetTerminalCursorStyle?: () => void };
++  private editorTheme: EditorTheme;
++  private savedComments: Map<string, ReviewComment>;
+@@ -138 +141 @@
+-    private onCommentsChanged?: (comments: Map<string, ReviewComment>) => void,
++    private onCommentsChanged?: (comments: Map<string, ReviewComment>) => Map<string, ReviewComment> | void,
+@@ -146,0 +150 @@
++    private createCommentEditor?: (theme: EditorTheme, onCancel: () => void) => Editor,
+@@ -147,0 +152 @@
++    this.savedComments = new Map(comments);
+@@ -190 +195 @@
+-    this.editor = new Editor(tui as never, {
++    this.editorTheme = {
+@@ -199 +204,2 @@
+-    });
++    };
++    this.editor = new Editor(tui as never, this.editorTheme);
+@@ -284 +290 @@
+-      if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c")) {
++      if ((matchesKey(data, "escape") && (!this.editor.getVimMode || (this.editor.getVimMode() === "normal" && !this.editor.isVimInputPending?.()))) || matchesKey(data, "ctrl+c")) {
+@@ -288 +294,2 @@
+-      this.editor.handleInput(data);
++      if (matchesKey(data, "enter") && !matchesKey(data, "ctrl+j") && !this.editor.isVimInputPending?.()) this.editor.onSubmit?.(this.editor.getExpandedText());
++      else this.editor.handleInput(data);
+@@ -1464,0 +1472 @@
++    this.editor.resetTerminalCursorStyle?.();
+@@ -1477 +1485,4 @@
+-    this.editor.setText("");
++    const onSubmit = this.editor.onSubmit;
++    this.editor.resetTerminalCursorStyle?.();
++    this.editor = new Editor(this.tui as never, this.editorTheme);
++    this.editor.onSubmit = onSubmit;
+@@ -1671,3 +1682,10 @@
+-    this.commentsRevision++;
+-    this.invalidateAnnotatedRows();
+-    this.onCommentsChanged?.(this.comments);
++    try {
++      this.comments = this.onCommentsChanged?.(this.comments) ?? this.comments;
++      this.savedComments = new Map(this.comments);
++    } catch (error) {
++      this.comments = new Map(this.savedComments);
++      throw error;
++    } finally {
++      this.commentsRevision++;
++      this.invalidateAnnotatedRows();
++    }
+@@ -1675,0 +1694,8 @@
++  private resetCommentEditor(text: string): void {
++    const onSubmit = this.editor.onSubmit;
++    this.editor.resetTerminalCursorStyle?.();
++    this.editor = this.createCommentEditor?.(this.editorTheme, () => this.exitEditMode()) ?? new Editor(this.tui as never, this.editorTheme);
++    this.editor.onSubmit = onSubmit;
++    this.editor.setText(text);
++  }
++
+@@ -1769 +1795 @@
+-    this.editor.setText(existing?.text ?? "");
++    this.resetCommentEditor(existing?.text ?? "");
+@@ -1790 +1816 @@
+-    this.editor.setText(existing?.text ?? "");
++    this.resetCommentEditor(existing?.text ?? "");
+@@ -1796,0 +1823 @@
++    this.editor.resetTerminalCursorStyle?.();
+--- a/workspace-comments.ts
++++ b/workspace-comments.ts
+@@ -2,2 +2,2 @@
+-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+-import { dirname, isAbsolute, relative, resolve } from "node:path";
++import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, rmSync } from "node:fs";
++import { dirname, relative, resolve } from "node:path";
+@@ -12,0 +13,4 @@
++  reviewId?: string;
++  revision?: string;
++  disposition?: "open" | "resolved" | "deleted";
++  submittedRevision?: string;
+@@ -59 +63 @@
+-    return readStoreFile(this.storePath).comments;
++    return this.identify(readStoreFile(this.storePath).comments);
+@@ -63 +67 @@
+-    return this.list().map((comment) => this.resolveComment(comment));
++    return this.list().filter(comment => !comment.disposition || comment.disposition === "open").map((comment) => this.locateComment(comment));
+@@ -83,0 +88,4 @@
++        reviewId: comment.reviewId,
++        revision: comment.revision,
++        disposition: comment.disposition,
++        submittedRevision: comment.submittedRevision,
+@@ -145,17 +153,5 @@
+-  syncFromComments(
+-    lines: ReviewLine[],
+-    comments: Iterable<ReviewComment>,
+-  ): void {
+-    const store = readStoreFile(this.storePath);
+-    const next = new Map(
+-      store.comments.map((comment) => [comment.id, comment]),
+-    );
+-    const commentIdsForCurrentFiles = new Set<string>();
+-    const currentFiles = new Set(
+-      lines.map((line) => line.filePath).filter(isPresent),
+-    );
+-
+-    for (const comment of store.comments) {
+-      if (currentFiles.has(comment.filePath)) {
+-        commentIdsForCurrentFiles.add(comment.id);
+-      }
++  update<T>(change: (records: WorkspaceCommentRecord[]) => T): T {
++    mkdirSync(dirname(this.storePath), { recursive: true });
++    const lock = `${this.storePath}.lock`;
++    try { mkdirSync(lock); } catch {
++      throw new Error("Review comments are being updated by another process. Retry; if a process crashed, remove the comments .lock directory after confirming it exited.");
+@@ -163,15 +159,7 @@
+-
+-    for (const id of commentIdsForCurrentFiles) {
+-      next.delete(id);
+-    }
+-
+-    for (const comment of comments) {
+-      const previous = this.getPreviousRecord(lines, comment, next);
+-      const record = this.buildRecord(lines, comment, previous);
+-      if (record) next.set(record.id, record);
+-    }
+-
+-    writeStoreFile(this.storePath, {
+-      version: STORE_VERSION,
+-      comments: [...next.values()],
+-    });
++    try {
++      const store = readStoreFile(this.storePath);
++      store.comments = this.identify(store.comments);
++      const result = change(store.comments);
++      writeStoreFile(this.storePath, store);
++      return result;
++    } finally { rmSync(lock, { recursive: true }); }
+@@ -180,19 +168,7 @@
+-  private getPreviousRecord(
+-    lines: ReviewLine[],
+-    comment: ReviewComment,
+-    commentsById: Map<string, WorkspaceCommentRecord>,
+-  ): WorkspaceCommentRecord | undefined {
+-    if (comment.global) return undefined;
+-    const start = lines.find((line) => line.id === comment.startLineId);
+-    const end = lines.find((line) => line.id === comment.endLineId);
+-    const filePath = normalizePath(comment.filePath);
+-    const startLine = start?.newLineNumber;
+-    const endLine = end?.newLineNumber;
+-    if (!filePath || startLine == null || endLine == null) return undefined;
+-    return commentsById.get(
+-      getPersistentCommentId(
+-        filePath,
+-        Math.max(1, Math.min(startLine, endLine)),
+-        Math.max(startLine, endLine),
+-      ),
+-    );
++  private identify(records: WorkspaceCommentRecord[]): WorkspaceCommentRecord[] {
++    return records.map(record => ({
++      ...record,
++      reviewId: record.reviewId ?? hashText(`${this.root}\0${record.id}\0${record.createdAt}`),
++      revision: record.revision ?? hashText(`${record.text}\0${record.updatedAt}`),
++      disposition: record.disposition ?? "open",
++    }));
+@@ -201 +177 @@
+-  private buildRecord(
++  buildRecord(
+@@ -232,0 +209 @@
++      ...previous,
+@@ -233,0 +211,4 @@
++      reviewId: comment.reviewId,
++      revision: comment.revision,
++      disposition: comment.disposition,
++      submittedRevision: comment.submittedRevision,
+@@ -247 +228 @@
+-  private resolveComment(
++  locateComment(
+@@ -301 +282 @@
+-    const lineNumber = line.newLineNumber ?? line.oldLineNumber;
++    const lineNumber = line.newLineNumber;
+@@ -406,3 +387,4 @@
+-    const comments = Array.isArray(parsed.comments)
+-      ? parsed.comments.filter(isWorkspaceCommentRecord)
+-      : [];
++    if (parsed.version !== STORE_VERSION || !Array.isArray(parsed.comments) || !parsed.comments.every(isWorkspaceCommentRecord)) {
++      throw new Error("Invalid review comment store; refusing to overwrite it");
++    }
++    const comments = parsed.comments;
+@@ -410,2 +392,2 @@
+-  } catch {
+-    return { version: STORE_VERSION, comments: [] };
++  } catch (error) {
++    throw new Error(`Unable to read review comments: ${error instanceof Error ? error.message : error}`);
+@@ -417 +399,5 @@
+-  writeFileSync(path, `${JSON.stringify(store, null, 2)}\n`, "utf8");
++  const temporary = `${path}.${process.pid}.tmp`;
++  try {
++    writeFileSync(temporary, `${JSON.stringify(store, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
++    renameSync(temporary, path);
++  } finally { rmSync(temporary, { force: true }); }
+@@ -456 +442 @@
+-    ["rev-parse", "--git-path", "pi-diff-review-comments.json"],
++    ["rev-parse", "--absolute-git-dir"],
+@@ -465 +451 @@
+-    if (gitPath) return isAbsolute(gitPath) ? gitPath : resolve(root, gitPath);
++    if (gitPath) return resolve(gitPath, "pi-diff-review-comments.json");
+--- a/types.ts
++++ b/types.ts
+@@ -5,0 +6,4 @@
++  reviewId?: string;
++  revision?: string;
++  disposition?: "open" | "resolved" | "deleted";
++  submittedRevision?: string;

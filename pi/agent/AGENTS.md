@@ -93,7 +93,14 @@ summary, and never fabricate a missing tool or skill.
 
 ## Human code review
 
-pi-diff-review provides user-invoked /diff and /view commands, not model tools.
+Users open reviews with /diff and /view. The review_comments model tool lists
+submitted feedback and marks individual comments resolved. After addressing a
+comment within the current task's boundaries, resolve it using the exact ID and
+revision supplied with the feedback. Leave unaddressed comments open. If resolution
+reports a revision conflict, reread the comment instead of resolving newer feedback
+blindly. Resolution records that feedback was addressed; it is not human approval
+or permission to implement a design.
+
 After a meaningful production change, offer a review checkpoint before starting
 another substantial change. Prefer actual diffs to repeating whole files in chat.
 Production includes runtime configuration, dependencies, migrations, and scripts;
