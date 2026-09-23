@@ -1,0 +1,99 @@
+--- a/src/vim-editor.ts
++++ b/src/vim-editor.ts
+@@ -6,6 +6,7 @@
+ import {
+   truncateToWidth,
+   visibleWidth,
++  matchesKey,
+   type EditorTheme,
+   type OverlayHandle,
+   type TUI,
+@@ -341,9 +342,20 @@
+     if (this.agentBusy === active) return;
+     this.agentBusy = active;
+     this.syncHardwareCursorVisibility(this.getCurrentCursorStyle());
++  }
++
++  override setText(text: string): void {
++    // Pi restores unchanged drafts after custom UI; keep the visual cursor/anchor.
++    if (text === this.getText()) return;
++    super.setText(text);
+   }
+ 
+   override handleInput(data: string): void {
++    // Ctrl-R is Portable Pi's global snippets shortcut, including in visual mode.
++    if (matchesKey(data, "ctrl+r")) {
++      super.handleInput(data);
++      return;
++    }
+     const keymap = keymapForOptions(this.options);
+     if (
+       canFastDelegateInsertInput(this.modalState, data, {
+@@ -356,6 +368,11 @@
+       return;
+     }
+ 
++    // Vim edits need real text, not Pi's opaque collapsed-paste markers.
++    // Public setText moves the cursor to the end and records an undo snapshot.
++    const expanded = this.getExpandedText();
++    if (expanded !== this.getText()) this.setText(expanded);
++
+     const update = handleModalInput(
+       this.modalState,
+       this.snapshot(),
+@@ -673,7 +690,7 @@
+   }
+ 
+   private redoSnapshot(): RedoSnapshot {
+-    return { text: this.getText(), cursor: this.getCursor() };
++    return { text: this.getExpandedText(), cursor: this.getCursor() };
+   }
+ 
+   private clearRedoStack(): void {
+@@ -687,6 +704,10 @@
+   private applyUndo(): void {
+     const before = this.redoSnapshot();
+     super.handleInput(KEY.undo);
++    // Materialization is representation-only; undo past it to the user's edit.
++    if (this.getText() !== this.getExpandedText() && this.getExpandedText() === before.text) {
++      super.handleInput(KEY.undo);
++    }
+     if (!sameRedoSnapshot(before, this.redoSnapshot())) this.redoStack.push(before);
+   }
+ 
+--- a/src/lifecycle.ts
++++ b/src/lifecycle.ts
+@@ -161,6 +161,8 @@
+     return;
+   }
+   state.previousEditorFactory = current;
++  // Pi 0.85 copies getText(), which otherwise loses collapsed paste payloads.
++  ctx.ui.setEditorText(ctx.ui.getEditorText());
+   ctx.ui.setEditorComponent(state.editorFactory);
+   state.hasInstalledFactory = true;
+ }
+@@ -256,6 +258,7 @@
+   state.agentBusy = false;
+   resetKnownEditors(state);
+   if (ctx.ui.getEditorComponent() === state.editorFactory) {
++    ctx.ui.setEditorText(ctx.ui.getEditorText());
+     ctx.ui.setEditorComponent(state.previousEditorFactory);
+     state.hasInstalledFactory = false;
+   }
+@@ -312,7 +315,8 @@
+     for (const editor of state.editors) editor.setAgentBusy(false);
+     observeInstall(installEditor(state, ctx), ctx);
+   });
+-  pi.on("session_shutdown", (event) => {
++  pi.on("session_shutdown", (event, ctx) => {
++    if (event.reason === "reload") ctx.ui.setEditorText(ctx.ui.getEditorText());
+     state.agentBusy = false;
+     state.config.invalidate();
+     state.installGeneration += 1;
+--- /dev/null
++++ b/release-notes.json
+@@ -0,0 +1,4 @@
++{
++  "version": "0.9.0",
++  "content": "## What's new\n\n- Added manual `:changelog` display of packaged current-version release notes in the existing read-only popup, with semantic Markdown rendering, width-safe prose wrapping, preserved code indentation, rendered-row scrolling, and explicit unavailable fallback.\n\n- Added trusted JavaScript configuration via `~/.pi/agent/pi-vimmode.config.js`. Configure presets, leader, cursor mode, UI, macros, marks, search, Ex command, prompt structures/transforms, action presets, prompt/insert actions, replay mappings, and scoped unmaps with a small `vim` API. Configuration writes are validated and staged atomically; defaults, global JSON, JavaScript, and project JSON compile into one immutable scoped plan before activation. Project JSON remains final authority, and failed config files leave existing settings unchanged.\n\n```js\n/** @type {import(\"./npm/node_modules/pi-vimmode/config\").VimConfig} */\nexport default (vim) => {\n  vim.g.mapleader = \" \";\n  vim.keymap.set(\"n\", \"<leader>q\", vim.prompt.quote());\n  vim.keymap.set(\"n\", \"zq\", null);\n};\n```\n\n- Added declaration-only JavaScript/TypeScript definitions for trusted config through `pi-vimmode/config`. `VimConfig` types synchronous or asynchronous root exports, while `VimConfigApi` types imported helpers and presets. Because the global config lives outside Pi's npm directory, use the exact relative JSDoc import shown above for editor completion and type checking. No runtime config helper or module is added.\n\n- Added scoped action-keymap descriptors for trusted JavaScript. `vim.keymap.set` accepts finite actions in normal, visual, insert, or operator-pending scopes; supports compatibility mode aliases, scoped `unmap`, deterministic conflict resolution, protected-shortcut overrides, and bounded replay mappings. Project settings remain final authority.\n\n- Added configurable Vim leader mappings. Set `piVimMode.leader` in JSON or `vim.g.mapleader` in trusted JavaScript, then use `<leader>` at the start of mapping keys. Project settings can override or clear inherited leaders.\n\n```json\n{\n  \"piVimMode\": {\n    \"leader\": \" \",\n    \"keymap\": {\n      \"commands\": {\n        \"visualBlock\": [\"<leader>v\"]\n      }\n    }\n  }\n}\n```\n\n- Added `piVimMode.ui.status.position` to place the complete editor-border status group on the left or right side of the editor. [#21](https://github.com/pekochan069/pi-vimmode/pull/21) [@alanpog](https://github.com/alanpog)\n\n```json\n{\n  \"piVimMode\": {\n    \"ui\": {\n      \"status\": {\n        \"position\": \"right\"\n      }\n    }\n  }\n}\n```\n\n- Added configurable EasyMotion-style character jumps. Bind the `easymotion` command, enter a target character, then press one of up to 52 case-insensitive labels to jump across the prompt. Set `piVimMode.easymotion.labelColor` to customize the ANSI label color. [#49](https://github.com/pekochan069/pi-vimmode/pull/49) [@tecfu](https://github.com/tecfu)\n\n```json\n{\n  \"piVimMode\": {\n    \"keymap\": {\n      \"commands\": {\n        \"easymotion\": [\"<leader><leader>\"]\n      }\n    },\n    \"easymotion\": {\n      \"labelColor\": \"\\u001b[31m\"\n    }\n  }\n}\n```\n\n## Bug fixes\n\n- Fixed character-search repeats: `,` now keeps opposite original `f`, `F`, `t`, or `T` direction, and `;` now advances `t` and `T` searches.\n- Fixed normal-mode `a` crossing into the next logical line when invoked at end of line, including on wrapped prompts followed by a blank line."
++}

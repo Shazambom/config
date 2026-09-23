@@ -12,6 +12,13 @@ update. Setup preserves customized review skills and commands.
 
 ## Sources
 
+- TypeSafe: `typesafe-ai`, copied unchanged with its MIT license from
+  https://github.com/typesafe-ai/skills at commit
+  `65a39f393687675ce170e6094757de20370365b9`. This version contains `SKILL.md`
+  and `LICENSE`, and links to live documentation rather than bundled references.
+  Use `/typesafe [task]` or Pi's `/skill:typesafe-ai [task]` after reloading.
+  The `/typesafe` command is a local alias that loads the full upstream skill.
+
 - `~/.claude`: 11 skills with their references and scripts, plus `bro.md`,
   `prove-it.md`, and `blast-radius.md`.
 - `~/Scheduler/.claude`: the `grafana-logs` skill and 19 commands. All commands

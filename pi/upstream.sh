@@ -9,6 +9,7 @@ jq -c '.[]' "$repo/pi/upstream.json" > "$stage/sources"
 while IFS= read -r spec; do
   name="$(jq -r '.name' <<< "$spec")"
   ref="$(jq -r '.ref' <<< "$spec")"
+  repository="$(jq -r '.repository // ("amosblomqvist/" + .name)' <<< "$spec")"
   sha="$(jq -r '.sha256' <<< "$spec")"
   target="$repo/pi/upstream/$name-$ref"
   patch="$(jq -r '.patch // empty' <<< "$spec")"
@@ -20,7 +21,7 @@ while IFS= read -r spec; do
   if [[ -f "$target/.portable-source.json" ]] && [[ "$(< "$target/.portable-source.json")" == "$stamp" ]]; then
     continue
   fi
-  pi_download_verified "https://codeload.github.com/amosblomqvist/$name/tar.gz/$ref" "$stage/source.tgz" "$sha"
+  pi_download_verified "https://codeload.github.com/$repository/tar.gz/$ref" "$stage/source.tgz" "$sha"
   mkdir "$stage/extracted"
   paths=()
   while IFS= read -r path; do

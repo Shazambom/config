@@ -1,5 +1,14 @@
 [
   {
+    "name": "pi-vimmode",
+    "repository": "pekochan069/pi-vimmode",
+    "version": "0.9.0",
+    "patch": "vimmode.patch",
+    "ref": "52bd6ac5e905157ac46ec15c120b7d0cc61a62df",
+    "sha256": "281aac86c79850ccbd05b3d80dec825d09908998859885975680855da07a9e47",
+    "paths": ["LICENSE", "README.md", "RELEASE.md", "package.json", "index.ts", "src", "docs/config.md", "docs/features.md", "docs/settings.md"]
+  },
+  {
     "name": "pi-config",
     "ref": "f82da563ab05d66729492d64c7ed4e96db3663f3",
     "patch": "prompt-snippets.patch",

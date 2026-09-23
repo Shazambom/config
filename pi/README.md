@@ -734,6 +734,44 @@ proof artifacts and checks that the reviewed source and index stayed unchanged.
 Append `low` to test the hunk-only path or `fix` to test a safe low-effort fix in
 the disposable fixture. These checks do not post GitHub comments.
 
+### Vim-style prompt editing
+
+[pi-vimmode](https://github.com/pekochan069/pi-vimmode) supplies modal editing in
+Pi's existing prompt box. Setup pins its 0.9.0 release source; no Neovim or Bun is
+needed. This is Vim emulation, not your Neovim configuration or full Vim parity.
+
+Start typing in INSERT mode. `Esc` enters NORMAL; `i` returns to INSERT.
+
+| Keys in NORMAL | Action |
+| --- | --- |
+| `h j k l`, `w b e`, `0 $`, `gg G` | Move around the prompt |
+| `v`, `V` | Highlight a character or line selection |
+| `y`, `d`, `c` | Yank, delete, or change a selection |
+| `dw`, `ciw`, `dd`, `yy`, `p` | Word/line edits and paste |
+| `u`, `Alt+R` | Undo and redo |
+| `/text`, `n`, `N` | Search within the draft |
+| `:keybindings` | Show the plugin's key reference |
+
+Enter submits the prompt unless search or an Ex command is pending. Use Pi's
+Shift+Enter for a newline. Type Pi slash commands in INSERT mode: `/` in NORMAL
+starts a search. `:%s/old/new/g` previews on its first Enter and applies on the
+second; its syntax is a limited subset of Vim substitutions.
+
+Ctrl+R keeps opening the snippet picker. Redo uses Alt+R to avoid that conflict;
+the pinned source includes a Ctrl+R passthrough patch. Compatibility fixes also
+preserve pasted text, undo, and selections across editor and snippet UI changes.
+Large collapsed pastes expand before modal editing, moving the cursor to the
+end of the draft. Use `gg` to return to the beginning. Ctrl+V retains Pi's paste
+behavior rather than entering visual block mode.
+
+On an empty prompt in INSERT mode, `/vimmode off` restores the standard editor;
+`/vimmode on` enables modal editing again. Use this toggle rather than `:q`,
+which quits Pi itself. The toggle lasts for the current extension runtime. `/reload` or restarting loads the configured default again.
+Settings live in `pi/agent/settings.json` and deploy through `./init.sh --pi`.
+
+Run `bash pi/test-vimmode.sh` for the real-terminal integration checks. The test
+uses no paid model calls and retains proof artifacts.
+
 ### Prompt snippets
 
 [Prompt snippets](https://github.com/amosblomqvist/pi-config/tree/main/extensions/prompt-snippets)
