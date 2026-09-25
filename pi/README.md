@@ -756,6 +756,31 @@ proof artifacts and checks that the reviewed source and index stayed unchanged.
 Append `low` to test the hunk-only path or `fix` to test a safe low-effort fix in
 the disposable fixture. These checks do not post GitHub comments.
 
+### File completion
+
+`./init.sh --pi` installs a guarded native-editor fix for stale file-completion
+menus in supported Pi versions. Enter or Tab on an outdated dropdown refreshes
+its suggestions and completes the selected path once, without another keypress
+or submitting the draft. Further typing, cursor movement, or cancellation clears
+the pending action. If the selected item disappears from the refreshed results,
+Pi does not choose a different file automatically. This applies with Vim mode on
+or off.
+
+`pi/path-completion.sh` checks exact versions and file hashes before patching the
+repository's editor copies and the active global installation. Unsupported global
+versions warn and remain untouched. Restart Pi after deployment; `/reload` does
+not replace already loaded native editor code.
+
+`bash pi/test-path-completion.sh` exercises the repository CLI. To test the active
+installed CLI instead:
+
+```bash
+source pi/command-path.sh
+PI_PATH_CLI="$(pi_real_command "$(command -v pi)")" bash pi/test-path-completion.sh
+```
+
+The tests use private fixtures and an offline provider, not paid model calls.
+
 ### Vim-style prompt editing
 
 [pi-vimmode](https://github.com/pekochan069/pi-vimmode) supplies modal editing in

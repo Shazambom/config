@@ -1,0 +1,6 @@
+[
+  {
+    "old": "state={lines:[\"\"],cursorLine:0,cursorCol:0};focused=!1;tui;theme;",
+    "new": "state={lines:[\"\"],cursorLine:0,cursorCol:0};#editorFocused=!1;get focused(){return this.#editorFocused}set focused(value){this.#editorFocused=value;if(!value)this.pendingAutocompleteAcceptance=void 0}tui;theme;"
+  }
+]

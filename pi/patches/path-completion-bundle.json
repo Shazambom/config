@@ -1,0 +1,10 @@
+[
+  {
+    "old": "this.autocompleteList.handleInput(data);return}if(kb.matches(data,\"tui.input.tab\")){let selected=this.autocompleteList.getSelectedItem();",
+    "new": "this.autocompleteList.handleInput(data);return}if((kb.matches(data,\"tui.input.tab\")||kb.matches(data,\"tui.select.confirm\"))&&(this.autocompleteSnapshotText!==this.getText()||this.autocompleteSnapshotLine!==this.state.cursorLine||this.autocompleteSnapshotCol!==this.state.cursorCol)){this.updateAutocomplete();return}if(kb.matches(data,\"tui.input.tab\")){let selected=this.autocompleteList.getSelectedItem();"
+  },
+  {
+    "old": "applyAutocompleteSuggestions(suggestions,state2){this.autocompletePrefix=suggestions.prefix,",
+    "new": "applyAutocompleteSuggestions(suggestions,state2){this.autocompleteSnapshotText=this.getText(),this.autocompleteSnapshotLine=this.state.cursorLine,this.autocompleteSnapshotCol=this.state.cursorCol,this.autocompletePrefix=suggestions.prefix,"
+  }
+]

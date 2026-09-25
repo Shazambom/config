@@ -1,0 +1,26 @@
+[
+  {
+    "old": "handleInput(data){let kb=getKeybindings();if(this.jumpMode!==null)",
+    "new": "handleInput(data){let kb=getKeybindings();if(this.pendingAutocompleteAcceptance){if(this.isAutocompleteAcceptanceCurrent()&&(kb.matches(data,\"tui.input.tab\")||kb.matches(data,\"tui.select.confirm\")))return;this.pendingAutocompleteAcceptance=void 0}if(this.jumpMode!==null)"
+  },
+  {
+    "old": "this.autocompleteSnapshotCol!==this.state.cursorCol)){this.updateAutocomplete();return}",
+    "new": "this.autocompleteSnapshotCol!==this.state.cursorCol)){const selected=this.autocompleteList.getSelectedItem();if(selected)this.pendingAutocompleteAcceptance={value:selected.value,input:data,text:this.getText(),line:this.state.cursorLine,col:this.state.cursorCol};this.updateAutocomplete();return}"
+  },
+  {
+    "old": "let suggestions=await this.autocompleteProvider.getSuggestions(this.state.lines,this.state.cursorLine,this.state.cursorCol,{signal:controller.signal,force:options.force});",
+    "new": "let suggestions;try{suggestions=await this.autocompleteProvider.getSuggestions(this.state.lines,this.state.cursorLine,this.state.cursorCol,{signal:controller.signal,force:options.force})}catch{suggestions=null}"
+  },
+  {
+    "old": "this.applyAutocompleteSuggestions(suggestions,options.force?\"force\":\"regular\"),this.tui.requestRender()",
+    "new": "this.applyAutocompleteSuggestions(suggestions,options.force?\"force\":\"regular\");const acceptance=this.pendingAutocompleteAcceptance;const canAccept=this.isAutocompleteAcceptanceCurrent();this.pendingAutocompleteAcceptance=void 0;if(acceptance&&canAccept){const index=suggestions.items.findIndex(item=>item.value===acceptance.value);if(index>=0){this.autocompleteList.setSelectedIndex(index);this.handleInput(acceptance.input)}}this.tui.requestRender()"
+  },
+  {
+    "old": "clearAutocompleteUi(){this.autocompleteState=null,",
+    "new": "clearAutocompleteUi(){this.pendingAutocompleteAcceptance=void 0;this.autocompleteState=null,"
+  },
+  {
+    "old": "updateAutocomplete(){!this.autocompleteState||!this.autocompleteProvider||this.requestAutocomplete({force:this.autocompleteState===\"force\",explicitTab:!1})}",
+    "new": "isAutocompleteAcceptanceCurrent(){const acceptance=this.pendingAutocompleteAcceptance;return this.focused&&!!acceptance&&acceptance.text===this.getText()&&acceptance.line===this.state.cursorLine&&acceptance.col===this.state.cursorCol}updateAutocomplete(){if(!this.isAutocompleteAcceptanceCurrent())this.pendingAutocompleteAcceptance=void 0;!this.autocompleteState||!this.autocompleteProvider||this.requestAutocomplete({force:this.autocompleteState===\"force\",explicitTab:!1})}"
+  }
+]

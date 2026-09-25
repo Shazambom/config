@@ -1,0 +1,19 @@
+--- a/editor.js
++++ b/editor.js
+@@ -201,7 +201,15 @@
+         cursorCol: 0,
+     };
+     /** Focusable interface - set by TUI when focus changes */
+-    focused = false;
++    #editorFocused = false;
++    get focused() {
++        return this.#editorFocused;
++    }
++    set focused(value) {
++        this.#editorFocused = value;
++        // Losing focus cancels intent even if focus returns before the query does.
++        if (!value) this.pendingAutocompleteAcceptance = undefined;
++    }
+     tui;
+     theme;
+     paddingX = 0;

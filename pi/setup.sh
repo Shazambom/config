@@ -15,6 +15,7 @@ if [[ -n "${CONFIG_PI_GLOBAL_PREFIX:-}" && "${CONFIG_PI_INSTALL_GLOBAL:-0}" == 1
   npm install --global --prefix "$CONFIG_PI_GLOBAL_PREFIX" --no-audit --no-fund \
     '@earendil-works/pi-coding-agent@latest' >&2
 fi
+bash "$repo/pi/path-completion.sh"
 agent="${CONFIG_PI_HOME:-$HOME/.pi}/agent"
 mkdir -p "$agent"
 chmod 700 "$agent"

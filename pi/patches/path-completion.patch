@@ -1,0 +1,28 @@
+--- a/editor.js
++++ b/editor.js
+@@ -605,6 +605,15 @@
+                 this.autocompleteList.handleInput(data);
+                 return;
+             }
++            // A displayed menu can outlive its query while the next one is debounced.
++            // Consume stale acceptance rather than slicing with its old prefix or submitting.
++            if ((kb.matches(data, "tui.input.tab") || kb.matches(data, "tui.select.confirm")) &&
++                (this.autocompleteSnapshotText !== this.getText() ||
++                    this.autocompleteSnapshotLine !== this.state.cursorLine ||
++                    this.autocompleteSnapshotCol !== this.state.cursorCol)) {
++                this.updateAutocomplete();
++                return;
++            }
+             if (kb.matches(data, "tui.input.tab")) {
+                 const selected = this.autocompleteList.getSelectedItem();
+                 if (selected && this.autocompleteProvider) {
+@@ -2003,6 +2012,9 @@
+             this.state.cursorCol === snapshotCol);
+     }
+     applyAutocompleteSuggestions(suggestions, state) {
++        this.autocompleteSnapshotText = this.getText();
++        this.autocompleteSnapshotLine = this.state.cursorLine;
++        this.autocompleteSnapshotCol = this.state.cursorCol;
+         this.autocompletePrefix = suggestions.prefix;
+         this.autocompleteList = this.createAutocompleteList(suggestions.prefix, suggestions.items);
+         const bestMatchIndex = this.getBestAutocompleteMatchIndex(suggestions.items, suggestions.prefix);

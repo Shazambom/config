@@ -1,0 +1,89 @@
+--- a/editor.js
++++ b/editor.js
+@@ -543,6 +543,12 @@
+     }
+     handleInput(data) {
+         const kb = getKeybindings();
++        if (this.pendingAutocompleteAcceptance) {
++            // Repeated accepts refer to the same visible choice, not another edit.
++            if (this.isAutocompleteAcceptanceCurrent() &&
++                (kb.matches(data, "tui.input.tab") || kb.matches(data, "tui.select.confirm"))) return;
++            this.pendingAutocompleteAcceptance = undefined;
++        }
+         // Handle character jump mode (awaiting next character to jump to)
+         if (this.jumpMode !== null) {
+             // Cancel if the hotkey is pressed again
+@@ -604,12 +610,16 @@
+                 this.autocompleteList.handleInput(data);
+                 return;
+             }
+-            // A displayed menu can outlive its query while the next one is debounced.
+-            // Consume stale acceptance rather than slicing with its old prefix or submitting.
++            // Refresh a stale menu, then accept this exact choice if the input stays unchanged.
+             if ((kb.matches(data, "tui.input.tab") || kb.matches(data, "tui.select.confirm")) &&
+                 (this.autocompleteSnapshotText !== this.getText() ||
+                     this.autocompleteSnapshotLine !== this.state.cursorLine ||
+                     this.autocompleteSnapshotCol !== this.state.cursorCol)) {
++                const selected = this.autocompleteList.getSelectedItem();
++                if (selected) this.pendingAutocompleteAcceptance = {
++                    value: selected.value, input: data, text: this.getText(),
++                    line: this.state.cursorLine, col: this.state.cursorCol,
++                };
+                 this.updateAutocomplete();
+                 return;
+             }
+@@ -1978,7 +1988,14 @@
+     async runAutocompleteRequest(requestId, controller, snapshotText, snapshotLine, snapshotCol, options) {
+         if (!this.autocompleteProvider)
+             return;
+-        const suggestions = await this.autocompleteProvider.getSuggestions(this.state.lines, this.state.cursorLine, this.state.cursorCol, { signal: controller.signal, force: options.force });
++        let suggestions;
++        try {
++            suggestions = await this.autocompleteProvider.getSuggestions(this.state.lines, this.state.cursorLine, this.state.cursorCol, { signal: controller.signal, force: options.force });
++        } catch {
++            // A failed query cannot fulfill a deferred accept. Current-query validation
++            // below also keeps an obsolete rejection from canceling a newer request.
++            suggestions = null;
++        }
+         if (!this.isAutocompleteRequestCurrent(requestId, controller, snapshotText, snapshotLine, snapshotCol)) {
+             return;
+         }
+@@ -2002,6 +2019,16 @@
+             return;
+         }
+         this.applyAutocompleteSuggestions(suggestions, options.force ? "force" : "regular");
++        const acceptance = this.pendingAutocompleteAcceptance;
++        const canAccept = this.isAutocompleteAcceptanceCurrent();
++        this.pendingAutocompleteAcceptance = undefined;
++        if (acceptance && canAccept) {
++            const index = suggestions.items.findIndex((item) => item.value === acceptance.value);
++            if (index >= 0) {
++                this.autocompleteList.setSelectedIndex(index);
++                this.handleInput(acceptance.input);
++            }
++        }
+         this.tui.requestRender();
+     }
+     isAutocompleteRequestCurrent(requestId, controller, snapshotText, snapshotLine, snapshotCol) {
+@@ -2033,6 +2060,7 @@
+         this.autocompleteAbort = undefined;
+     }
+     clearAutocompleteUi() {
++        this.pendingAutocompleteAcceptance = undefined;
+         this.autocompleteState = null;
+         this.autocompleteList = undefined;
+         this.autocompletePrefix = "";
+@@ -2044,7 +2072,13 @@
+     isShowingAutocomplete() {
+         return this.autocompleteState !== null;
+     }
++    isAutocompleteAcceptanceCurrent() {
++        const acceptance = this.pendingAutocompleteAcceptance;
++        return this.focused && !!acceptance && acceptance.text === this.getText() &&
++            acceptance.line === this.state.cursorLine && acceptance.col === this.state.cursorCol;
++    }
+     updateAutocomplete() {
++        if (!this.isAutocompleteAcceptanceCurrent()) this.pendingAutocompleteAcceptance = undefined;
+         if (!this.autocompleteState || !this.autocompleteProvider)
+             return;
+         this.requestAutocomplete({ force: this.autocompleteState === "force", explicitTab: false });
