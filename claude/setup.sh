@@ -144,14 +144,19 @@ CODE_REVIEW_SEED
 migrate_bundled_code_review
 
 migrate_bundled_tdd() {
-  local target="$destination/commands/tdd.md" backup="$destination/tdd-command-backup-test-quality-v1" digest
+  local target="$destination/commands/tdd.md" backup digest version
   [[ ! -L "$destination" && ! -L "$destination/commands" ]] || return 0
   [[ -f "$target" && ! -L "$target" && -f "$source_root/commands/tdd.md" ]] || return 0
-  [[ ! -e "$backup" && ! -L "$backup" ]] || return 0
   if command -v shasum >/dev/null 2>&1; then digest="$(shasum -a 256 < "$target")"
   elif command -v sha256sum >/dev/null 2>&1; then digest="$(sha256sum < "$target")"
   else return 0; fi
-  [[ "${digest%% *}" == 2aedb49d9fbf948623172e68af353648f73948278668f816fc1993e30b0ea595 ]] || return 0
+  case "${digest%% *}" in
+    2aedb49d9fbf948623172e68af353648f73948278668f816fc1993e30b0ea595) version=v1 ;;
+    7cdd1aef3b4ce59d80f91ec8085bbc90c34d64d3b855e9cc29dee8b9dbc71d84) version=v2 ;;
+    *) return 0 ;;
+  esac
+  backup="$destination/tdd-command-backup-test-quality-$version"
+  [[ ! -e "$backup" && ! -L "$backup" ]] || return 0
   cmp -s "$target" "$source_root/commands/tdd.md" && return 0
   mkdir -m 700 "$backup" || return 0
   mv "$target" "$backup/tdd.md"

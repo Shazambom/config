@@ -39,4 +39,18 @@ printf 'Keep existing backup\n' > "$work/conflict/.claude/tdd-command-backup-tes
 run conflict
 cmp "$work/legacy.md" "$work/conflict/.claude/commands/tdd.md"
 grep -Fxq 'Keep existing backup' "$work/conflict/.claude/tdd-command-backup-test-quality-v1"
-printf 'PASS: exact snippet text, fresh setup, exact migration, private backup, idempotence, customization, symlink and backup preservation.\n'
+old_body='Write meaningful tests at every level. Assert the intended behavior, not merely that code ran or returned something. Check actual results against independently justified expectations, including relevant failure cases. Verify that the test fails when the behavior it protects is broken. Do not mock away the behavior being tested, weaken assertions to make a test pass, or change expected results without verifying the requirements. Do not cut corners or claim coverage the test does not provide.'
+awk -v body="$old_body" '/^## Rules$/ { print "## Test quality\n\n" body "\n" } { print }' "$work/legacy.md" > "$work/quality-v1.md"
+if command -v shasum >/dev/null; then digest="$(shasum -a 256 < "$work/quality-v1.md")"; else digest="$(sha256sum < "$work/quality-v1.md")"; fi
+[[ "${digest%% *}" == 7cdd1aef3b4ce59d80f91ec8085bbc90c34d64d3b855e9cc29dee8b9dbc71d84 ]]
+mkdir -p "$work/quality-v1/.claude/commands"
+cp "$work/quality-v1.md" "$work/quality-v1/.claude/commands/tdd.md"
+printf 'Keep older backup\n' > "$work/quality-v1/.claude/tdd-command-backup-test-quality-v1"
+run quality-v1
+cmp "$source" "$work/quality-v1/.claude/commands/tdd.md"
+cmp "$work/quality-v1.md" "$work/quality-v1/.claude/tdd-command-backup-test-quality-v2/tdd.md"
+grep -Fxq 'Keep older backup' "$work/quality-v1/.claude/tdd-command-backup-test-quality-v1"
+run quality-v1
+cmp "$source" "$work/quality-v1/.claude/commands/tdd.md"
+cmp "$work/quality-v1.md" "$work/quality-v1/.claude/tdd-command-backup-test-quality-v2/tdd.md"
+printf 'PASS: exact snippet text, fresh setup, both migrations, private backup, idempotence, customization, symlink and backup preservation.\n'
