@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 let authRequests = 0;
 let authReleased = false;
@@ -49,9 +51,21 @@ const server = createServer(async (req, res) => {
       assert.deepEqual([...tools].sort(), ['edit', 'grep', 'ls', 'read', 'write']);
       if (!results.length) call = { name: 'write', args: { path: 'fixture.md', content: '# Memory fixture\nPortable Pi memory evidence.\n' } };
     } else if (text.includes('ROLE:scout')) {
-      assert.deepEqual([...tools].sort(), ['ask_question', 'find', 'grep', 'ls', 'read']);
-      if (!results.length) call = { name: 'read', args: { path: 'evidence.txt' } };
-      else assert.match(JSON.stringify(results), /PORTABLE_PI_CHILD_EVIDENCE/);
+      assert.deepEqual([...tools].sort(), ['ask_question', 'find', 'grep', 'load_workflow', 'ls', 'read']);
+      if (!results.length) call = { name: 'load_workflow', args: { name: '/tdd' } };
+      else {
+        const path = join(process.env.HOME, '.claude/commands/tdd.md');
+        const result = results[0].content;
+        assert(result.includes(`Kind: prompt\nName: tdd\nPath: ${path}`));
+        assert(result.endsWith(readFileSync(path, 'utf8')), 'Child must receive complete unchanged existing prompt');
+        assert(!result.includes('/skills/tdd/SKILL.md'));
+        if (results.length === 1) call = { name: 'load_workflow', args: { name: '/skill:how' } };
+        else {
+          const skillPath = join(process.env.HOME, '.claude/skills/how/SKILL.md');
+          assert(results[1].content.includes(`Kind: skill\nName: how\nPath: ${skillPath}`));
+          assert(results[1].content.endsWith(readFileSync(skillPath, 'utf8')));
+        }
+      }
     } else if (text.includes('ROLE:worker')) {
       for (const tool of ['edit', 'write', 'bash', 'subagent', 'subagent_message', 'subagents_list', 'web_search', 'web_fetch']) assert(tools.includes(tool), `Worker missing ${tool}`);
       if (!results.length) call = { name: 'write', args: { path: 'worker-evidence.txt', content: 'WORKER_OK\n' } };

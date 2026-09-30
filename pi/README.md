@@ -110,6 +110,19 @@ See [`claude/README.md`](../claude/README.md) for provenance and limitations.
 | `~/.claude/skills/how/SKILL.md` | `/skill:how question here` |
 | Any other valid `SKILL.md` in that tree | `/skill:<name> arguments` |
 
+Agents resolve named instructions with the read-only `load_workflow` tool. It
+uses Pi's native command index, not a directory-name convention. `/tdd` resolves
+the existing prompt at `~/.claude/commands/tdd.md`; `/skill:how` resolves the
+registered skill. Bare names must be unambiguous, or the caller specifies `kind`.
+The result includes the exact source path and full unchanged contents. Missing
+and ambiguous names return errors instead of triggering a folder search.
+
+Restricted subagents have the same lookup tool. A slash command written inside
+a subagent task is ordinary task text, not a native command invocation: tell the
+child to call `load_workflow` with that name. Manual-only skills remain hidden
+from automatic model selection but can be loaded by explicit name. Lookup does
+not execute a workflow or supply tools that its instructions require.
+
 Skills also appear in the model's available-skills list. References, assets,
 and scripts resolve relative to the loaded skill directory. Global Claude skills
 are available to all Pi models, including Codex Astra. The `claude-skills.ts`

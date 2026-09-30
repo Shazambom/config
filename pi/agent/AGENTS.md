@@ -8,6 +8,19 @@ Setup seeds missing global Claude commands and skills from this repo's `claude/`
 bundle without overwriting existing entries. Project skill discovery walks from
 cwd up to the nearest repository root. Same-name skills keep Pi's first match.
 
+Use `load_workflow` to find a named skill or prompt when its full instructions
+have not already been loaded. `/skill:how` selects a skill; `/tdd` selects the
+existing prompt. Bare names must be unambiguous; use `kind` when necessary.
+Never construct a `SKILL.md` path from a name or search folders to guess its
+location. The tool returns the indexed source path and unchanged contents.
+Resolve resource references from that source; project commands still run in the
+project as their instructions specify. If lookup fails, report the error rather
+than invent a path. Newly added resources may require `/reload`.
+
+Subagent task text is not a slash-command invocation. When delegating a named
+workflow, instruct the child to call `load_workflow` with its exact name before
+following it. Restricted children have this read-only lookup tool too.
+
 ## Cross-harness compatibility
 
 Claude/Cursor tool names in imported instructions describe intent, not tools

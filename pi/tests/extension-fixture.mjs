@@ -17,7 +17,7 @@ const agentDir = process.env.PI_CODING_AGENT_DIR;
 const loader = new DefaultResourceLoader({ cwd: process.cwd(), agentDir });
 await loader.reload();
 assert.deepEqual(loader.getExtensions().errors, []);
-assert.equal(loader.getExtensions().extensions.length, 10);
+assert.equal(loader.getExtensions().extensions.length, 11);
 const snippetExtension = loader.getExtensions().extensions.find(extension => extension.commands.has('snippets'));
 assert(snippetExtension?.shortcuts.has('ctrl+r'), 'Snippets must bind Ctrl+R');
 assert(!snippetExtension.shortcuts.has('alt+s'), 'Old snippet shortcut must be removed');
@@ -90,7 +90,7 @@ try {
   const scout = completion('smoke-scout');
   const worker = completion('smoke-worker');
   await Promise.all([
-    call('subagent', { agent: 'scout', name: 'smoke-scout', model: 'smoke/smoke', task: 'ROLE:scout Read evidence.txt.' }),
+    call('subagent', { agent: 'scout', name: 'smoke-scout', model: 'smoke/smoke', task: 'ROLE:scout Load the named /tdd and /skill:how workflows as data only. Do not follow them.' }),
     call('subagent', { agent: 'worker', name: 'smoke-worker', model: 'smoke/smoke', task: 'ROLE:worker Write worker-evidence.txt.' }),
   ]);
   for (const result of await Promise.all([scout, worker])) {

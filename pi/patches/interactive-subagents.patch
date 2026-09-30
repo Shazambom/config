@@ -15,7 +15,7 @@ index 7e20a0f..66bdef1 100644
 @@ -865 +869,6 @@ function applySandboxToParts(
 -    parts.push("--tools", shellEscape(loadout.toolAllowlist));
 +    // Allowed by the sandbox, but the team extension activates it only while ON.
-+    parts.push("--tools", shellEscape(`${loadout.toolAllowlist},team_send`));
++    parts.push("--tools", shellEscape(`${loadout.toolAllowlist},team_send,load_workflow`));
 +    const skillDiscovery = join(loadout.agentDir ?? getAgentConfigDir(), "extensions", "claude-skills.ts");
 +    if (existsSync(skillDiscovery)) {
 +      parts.push("-e", shellEscape(skillDiscovery));
