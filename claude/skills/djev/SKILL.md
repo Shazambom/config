@@ -46,19 +46,29 @@ Where the two disagree on a limit, djev wins, because djev is what we actually c
    **Rule: never send more than 10 questions in one request, regardless of type.** That
    is the safe side of the boundary and removes the option count from the reasoning.
 2. **Context is `MAX_MODEL_LEN`, "prompt plus canvas" (documented).** djev-spark's
-   default profile is `MAX_MODEL_LEN=4096`; a 128k profile exists
-   (`MAX_MODEL_LEN=131072`). The served canvas is `CANVAS=256` tokens. State + all
-   question text + canvas must fit. Do not assume the 128k profile; check `/health`
-   or `/v1/models`, or measure with a growing-state probe (one Noul, sizes doubling)
-   and record the boundary and date here.
-3. **502 means "a failed upstream call" to vLLM (documented).** An over-length prompt,
-   a crashed or loading engine, or a gateway timeout in front of a slow answer all
-   surface as 502. A 502 is not a rate-limit signal and is not retried.
-4. **Latency is not ~100 ms (measured 2026-09-25).** A 500-character state with one
-   Noul returned 200 after **600 s** on a cold or busy engine. Budget for this: every
-   call gets a hard client timeout, the caller degrades gracefully when it fires, and
-   nothing user-facing waits on djev synchronously.
-5. **Concurrency:** `MAX_SEQS=32` server-side by default; `CANVAS_SCHEDULE` narrows the
+   default profile is `MAX_MODEL_LEN=4096` and a 128k profile exists; ours measures
+   as 8192 (item 4). The served canvas is `CANVAS=256` tokens. State + all question
+   text + canvas must fit. Re-measure with a growing-state probe (one Noul, `curl`,
+   short timeout) after any redeploy and update item 4 with the date.
+3. **502 means "a failed upstream call" to vLLM (documented).** In practice on our
+   deployment it means the prompt exceeded the context (item 4); a crashed engine would
+   look the same. A 502 is not a rate-limit signal and is not retried.
+4. **Context is 8192 tokens on our deployment (measured 2026-09-25).** With one Noul
+   and transcript-like state: 20,000 chars = 7,812 `prompt_tokens` → 200; 21,000 chars
+   → **502 "inference failed"** (also at 24k, 32k, 48k, 64k, 96k, 131k). 7,812 + 256
+   canvas fits 8192; the next step does not. So `MAX_MODEL_LEN=8192` here, not 4096 and
+   not 128k. **Budget: `prompt_tokens` (state + all question text) ≤ ~7,800, and leave
+   margin: target ≤ 7,000.** An over-length prompt is a 502 with body
+   `inference failed`, returned in ~0.3 s; it is not a rate-limit and not retried.
+5. **Tokenisation is dense (measured 2026-09-25).** Transcript text tokenises at about
+   **2.5 characters per token** (939 tokens for 2,000 chars; 3,227 for 8,000; 7,812 for
+   20,000). So ~7,000 tokens is roughly **17,500 characters** of state plus questions.
+   Size state in characters with that ratio, and log `prompt_tokens` to tune it.
+6. **Latency is ~0.5 s per request (measured 2026-09-25)** for prompts from 900 to
+   7,800 tokens; `/health` answers in ~0.3 s; `/v1/models` is 404 on our deployment.
+   Do not believe a multi-minute figure without a `curl` timing: an earlier in-session
+   measurement of ~600 s was an artefact of a sandboxed Python client, not djev.
+7. **Concurrency:** `MAX_SEQS=32` server-side by default; `CANVAS_SCHEDULE` narrows the
    canvas under load (`[[1,2,256],[3,6,128],[7,32,64]]`), so many parallel requests get
    slower and smaller reads. Prefer a few requests with several questions each over
    many single-question requests.
@@ -85,7 +95,8 @@ Where the two disagree on a limit, djev wins, because djev is what we actually c
 Questions to djev are **deliberate and focused**. Never load requests "with abandon".
 
 - ≤ 10 questions per request, always. State filtered in code to the fields the
-  questions need; keep it small (the Sage design caps state at 24 KiB).
+  questions need; keep it small (the Sage design caps state at 16 KiB, ≈ 6,500 tokens,
+  leaving room for questions and the canvas inside the 8192 context).
 - One narrow judgement per question. Code does counting, numeric comparison and date
   arithmetic before the call. No speculative questions added to use up a budget.
 - Every request logs: question count, Choice-option total, Noul count, Score count,
@@ -104,8 +115,8 @@ Questions to djev are **deliberate and focused**. Never load requests "with aban
 
 1. Read `/typesafe` for the question design; pick Noul / Choice / Score by meaning.
 2. Count questions (≤ 10) and Choice options; write both in a comment at the call site.
-3. Estimate `prompt_tokens` (state + questions, ~4 chars/token) against the deployed
-   `MAX_MODEL_LEN`; leave 256 for the canvas.
+3. Estimate `prompt_tokens` (state + questions, **~2.5 chars/token** on transcript
+   text) against the 8192 context; leave 256 for the canvas and margin: target ≤ 7,000.
 4. Decide the timeout and the degradation path when it fires.
 5. Record one live response into a fixture; assert the request body shape in a test.
 6. Add the logging fields above.
@@ -116,8 +127,8 @@ Questions to djev are **deliberate and focused**. Never load requests "with aban
 |---|---|
 | 422 `inference failed` | question count > 10 with ≥ 5 Choice options in total → split the request |
 | 422 other message | dependency / id validation; read `error.message` |
-| 502 | prompt too long for `MAX_MODEL_LEN`, engine down or loading, or a gateway timed out a slow read; check `/health`, then shrink state, then measure latency with a 1-Noul probe |
-| timeout | expected under load or cold start; confirm with a tiny probe before blaming size |
+| 502 `inference failed` | prompt exceeded the 8192 context: check the logged `prompt_tokens` / state bytes, shrink state; if the request was small, check `/health` for a down engine |
+| timeout | djev answers in ~0.5 s; a long wait is the client, the sandbox, or the network. Time it with `curl -w` before blaming the server or the request |
 | answers keyed differently than questions | schema drift; the client must reject, not coerce |
 
 When a limit here is found wrong, fix this file and date the change.
