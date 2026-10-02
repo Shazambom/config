@@ -14,6 +14,15 @@ never hand-edit or hand-install anything on the local machine.**
   to `main` broke us), and use `PlugUpdate --sync`, not `PlugInstall`, so
   existing machines follow branch changes.
 
+## Configuration
+
+- Minimize config. Choose the simplest safe, correct design. No speculative settings or abstractions.
+- Keep defaults and tuning values in code constants. Moving them to env vars requires a concrete operational need and explicit human approval, never an AI decision.
+- Env vars are only for credentials, service URLs, and necessary infrastructure or algorithm tuning, such as worker counts, cache limits, and TTLs. No product feature switches or business behavior.
+- DB config holds only required business settings. Feature switches require a business need for behavior to differ by location.
+- Look for a suitable existing home for config before proposing a new table. A new setting does not justify a new table.
+- Check related settings before adding config. Two booleans mean four states. Discuss invalid combinations, prerequisites, and opportunities to combine settings with the user before implementing.
+
 ## Scripting preference
 
 - Prefer Bash over JavaScript/TypeScript for repository scripts, including
