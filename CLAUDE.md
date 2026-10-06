@@ -17,6 +17,8 @@ never hand-edit or hand-install anything on the local machine.**
 ## Configuration
 
 - Minimize config. Choose the simplest safe, correct design. No speculative settings or abstractions.
+- Enabling or disabling an existing capability should require changing one variable in one authoritative place, not editing several files. Keep routine configuration changes quick and localized. Tests should cover both states without needing rewrites whenever the selected value changes.
+- Configuration is the source of truth for its current values. Document what a setting does and how to use it, not its current value or enabled/disabled status. Changing a value should not require documentation updates.
 - Keep defaults and tuning values in code constants. Moving them to env vars requires a concrete operational need and explicit human approval, never an AI decision.
 - Env vars are only for credentials, service URLs, and necessary infrastructure or algorithm tuning, such as worker counts, cache limits, and TTLs. No product feature switches or business behavior.
 - DB config holds only required business settings. Feature switches require a business need for behavior to differ by location.
@@ -25,6 +27,10 @@ never hand-edit or hand-install anything on the local machine.**
 
 ## Scripting preference
 
+- Never hard-code machine-specific absolute paths, including in tests and temporary
+  debug scripts. Use relative paths; when an absolute path is required, resolve it
+  from the script/repository location, `$HOME`, or the system temporary directory.
+  Discover installed executables instead of embedding a user's installation path.
 - Prefer Bash over JavaScript/TypeScript for repository scripts, including
   setup, deployment, automation, and tests. Bash is more broadly available;
   do not introduce a JS runtime dependency merely for scripting convenience.

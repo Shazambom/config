@@ -65,10 +65,12 @@ git status --porcelain > "$proof/after.status"
 jq -e --arg level "$level" --argjson cap "$cap" '.level == $level and (.findings | length <= $cap) and all(.findings[]; (.short_summary | length <= 60))' "$proof/report.json" >/dev/null
 children="$(jq -es 'map(select(.type == "message" and .message.role == "assistant") | .message.content[] | select(.type == "toolCall" and .name == "subagent")) | length' "$proof/session.jsonl")"
 if [[ "$level" == medium ]]; then
-  [[ "$children" -ge 9 ]]
+  [[ "$children" -ge 10 ]]
   jq -e 'any(.findings[]; (.file | endswith("retryable.sh")) and .line == 4 and .verdict == "CONFIRMED")' "$proof/report.json" >/dev/null
 else
-  [[ "$children" == 0 ]]
+  # Low still has no finder/candidate children, but requires one final verifier.
+  [[ "$children" == 1 ]]
+  jq -es 'all(.[] | select(.type == "message" and .message.role == "assistant") | .message.content[] | select(.type == "toolCall"); .name != "subagent_message")' "$proof/session.jsonl" >/dev/null
   jq -e 'all(.findings[]; has("verdict") | not)' "$proof/report.json" >/dev/null
 fi
 if [[ "${2:-}" == fix ]]; then

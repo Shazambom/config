@@ -1,5 +1,48 @@
 # Portable Pi
 
+`./init.sh --pi-no-terminal` deploys Pi without running tmux or iTerm2 setup.
+Use it when terminal preferences and helpers must remain untouched.
+
+Interactive launches automatically use tmux so subagents can open their own panes.
+Existing sessions outside tmux must exit and resume through `pi` to use this routing.
+The reported resize lag remains unresolved.
+
+Pi defaults to native `fullscreen` rendering, which upstream labels experimental.
+It keeps the prompt fixed and scrolls the
+transcript inside Pi, avoiding regular-mode history clears when earlier tool
+output changes. Use Home/End or Page Up/Page Down for transcript navigation;
+Ctrl+Home/End still move inside the prompt. Native iTerm2 scrollback is not the
+conversation viewport in this mode. Dragging highlights without copying. Ctrl+C
+copies selected transcript text without clearing the draft; without a selection,
+Ctrl+C retains its normal clear/exit behavior. The native Ctrl+X copy action remains
+available. `pi/agent/extensions/selection-copy.ts` adds the selection-aware shortcut
+without replacing the Vim editor. It defers to open overlays and uses Pi's clipboard
+backend. Hold Shift+Command for iTerm2's native link handling. Inline iTerm2 images display
+as text placeholders. `/settings` → TUI mode changes the current runtime without
+restarting; `pi --tui-mode regular` overrides the default for one launch.
+
+`bash pi/test-render-stability.sh [Pi package directory]` checks long history,
+concurrent tool updates, streaming, draft preservation, scrolling and pane resize
+in a private terminal server with no model calls. It retains its printed proof
+directory. Passing `regular` as a second argument is a negative control: the test
+must fail when normal tool updates emit scrollback-clear sequences. This test
+checks terminal contents, not GPU compositing or native iTerm2 pane focus.
+
+`pi/render-width.sh` applies a version/hash-guarded optimization to native CLI
+bundles for Pi 0.85.1 and 0.87.0, after the autocomplete patches. Once ANSI styling
+is stripped, printable ASCII uses its length instead of Unicode segmentation.
+Unicode retains the original path. This reduces measured long-history resize work;
+it does not establish the cause of every reported stall. Unknown assets are left
+untouched. Restart Pi after deployment: `/reload` cannot replace the native bundle.
+The standalone SDK/TUI packages are not changed by this optimization.
+
+`bash pi/test-render-width.sh [coding-agent-package]` checks native-bundle width
+results, avoidance of unnecessary segmentation, deployment guards, and coexistence
+with autocomplete patches. `bash pi/test-init-target.sh` checks deployment scope.
+`bash pi/test-selection-copy.sh [coding-agent-package]` exercises mouse selection,
+Ctrl+C, draft preservation, and overlay handling through the real CLI. Its clipboard
+backend writes only a fixture file, not the user's system clipboard.
+
 Run `/path/to/config/init.sh --pi` to deploy this repo's defaults to the
 standard `~/.pi/agent` directory and install global Pi if it is missing.
 The underlying Pi package can update independently. Setup installs an executable
@@ -24,9 +67,9 @@ The Bash bootstrap downloads private, pinned Node.js 22.23.2 (including npm)
 and jq 1.8.1, verifies their repository-pinned SHA-256 checksums, then installs
 Pi and all npm dependencies.
 Later launches reuse the installed runtime and dependencies. Interactive launches
-open a new tmux session when outside tmux. In iTerm2, the launcher uses native
-integration (`tmux -CC`); other terminals use the standard tmux UI. Inside tmux,
-the launcher uses the current pane. Print/RPC modes do not open tmux.
+open a new tmux session when outside tmux. That path uses native integration (`tmux -CC`) in iTerm2 and the standard
+tmux UI elsewhere. Inside tmux, the launcher uses the current pane. Print/RPC
+modes do not open tmux.
 
 Supported runtime: macOS and modern glibc Linux, arm64/x64, not Alpine/musl or
 native Windows. Downloads need Bash, Git, tar/gzip, curl or wget, and shasum or
@@ -120,7 +163,9 @@ and ambiguous names return errors instead of triggering a folder search.
 Restricted subagents have the same lookup tool. A slash command written inside
 a subagent task is ordinary task text, not a native command invocation: tell the
 child to call `load_workflow` with that name. Manual-only skills remain hidden
-from automatic model selection but can be loaded by explicit name. Lookup does
+from automatic model selection but can be loaded by explicit name. `timeline` is
+manual-only: invoke `/skill:timeline` or explicitly ask to use the timeline skill.
+Generic debugging requests do not activate it. Lookup does
 not execute a workflow or supply tools that its instructions require.
 
 Skills also appear in the model's available-skills list. References, assets,

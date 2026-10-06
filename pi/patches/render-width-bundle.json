@@ -1,0 +1,6 @@
+[
+  {
+    "old": "let width=0;for(let{segment:segment2}of graphemeSegmenter.segment(clean))width+=graphemeWidth(segment2);if(widthCache.size>=WIDTH_CACHE_SIZE)",
+    "new": "let width=0;if(isPrintableAscii(clean))width=clean.length;else for(let{segment:segment2}of graphemeSegmenter.segment(clean))width+=graphemeWidth(segment2);if(widthCache.size>=WIDTH_CACHE_SIZE)"
+  }
+]

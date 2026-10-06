@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+umask 077
 work="$(mktemp -d "${TMPDIR:-/tmp}/code-review-setup.XXXXXX")"
-trap 'rm -rf "$work"' EXIT
+trap 'printf "Code-review setup proof: %s\n" "$work"' EXIT
 legacy="${CODE_REVIEW_LEGACY_FIXTURE:-}"
+if [[ -z "$legacy" ]]; then
+  # Pin the shipped bundle, not HEAD, so this remains a migration regression test.
+  legacy="$work/legacy"
+  mkdir -p "$legacy/references"
+  for relative in SKILL.md references/{actions,angles,levels,origin,scope}.md; do
+    git -C "$repo" show "2c49ef7:claude/skills/code-review/$relative" > "$legacy/$relative"
+  done
+fi
 export HOME="$work/home"
 source_skill="$repo/claude/skills/code-review"
 target="$HOME/.claude/skills/code-review"
@@ -39,13 +48,22 @@ bash "$repo/claude/setup.sh"
 printf '%s\n' 'PASS: code-review skill, references and alias seed correctly; repeated setup preserves customizations, missing references and symlinks.'
 if [[ -n "$legacy" ]]; then
   [[ -d "$legacy" ]]
-  backup="$HOME/.claude/code-review-skill-backup-seed-v1"
-  for mode in exact custom extra symlink conflict; do
+  if command -v shasum >/dev/null; then digest="$(shasum -a 256 < "$legacy/SKILL.md")"; else digest="$(sha256sum < "$legacy/SKILL.md")"; fi
+  case "${digest%% *}" in
+    f7136d7e31e53cde8f1bf0cc0583031ad967855e89616c0c515049c0d48a788a) version=final-report-v1 ;;
+    2d76f548e597936f4d8bb9a78e91e86f320bedec676722190593d60218ea1965) version=seed-v1 ;;
+    *) echo 'Unknown legacy fixture' >&2; exit 1 ;;
+  esac
+  backup="$HOME/.claude/code-review-skill-backup-$version"
+  for mode in exact custom reference missing extra symlink conflict prior-backup; do
     rm -rf "$HOME"
     mkdir -p "$HOME/.claude/skills"
     cp -R "$legacy" "$target"
     case "$mode" in
       custom) printf '\nCustom policy\n' >> "$target/SKILL.md" ;;
+      reference) printf '\nCustom policy\n' >> "$target/references/actions.md" ;;
+      missing) rm "$target/references/scope.md" ;;
+      prior-backup) mkdir "$HOME/.claude/code-review-skill-backup-older"; printf 'Keep\n' > "$HOME/.claude/code-review-skill-backup-older/sentinel" ;;
       extra) mkdir "$target/notes" ;;
       symlink) rm "$target/references/angles.md"; ln -s "$legacy/references/angles.md" "$target/references/angles.md" ;;
       conflict) mkdir "$backup" ;;
@@ -53,12 +71,16 @@ if [[ -n "$legacy" ]]; then
     rm -rf "$work/expected"
     cp -R "$target" "$work/expected"
     bash "$repo/claude/setup.sh"
-    if [[ "$mode" == exact ]]; then
+    if [[ "$mode" == exact || "$mode" == prior-backup ]]; then
       diff -qr "$legacy" "$backup/code-review"
       diff -qr "$source_skill" "$target"
       [[ -n "$(find "$backup" -prune -perm 700 -print)" ]]
       bash "$repo/claude/setup.sh"
       diff -qr "$source_skill" "$target"
+      diff -qr "$legacy" "$backup/code-review"
+      if [[ "$mode" == prior-backup ]]; then
+        [[ "$(< "$HOME/.claude/code-review-skill-backup-older/sentinel")" == Keep ]]
+      fi
     else
       diff -qr "$work/expected" "$target"
       [[ ! -e "$backup/code-review" ]]

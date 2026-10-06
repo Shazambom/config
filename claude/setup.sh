@@ -110,31 +110,58 @@ migrate_bundled_arena() {
 }
 migrate_bundled_arena
 
+migrate_bundled_timeline() {
+  local target="$destination/skills/timeline" backup="$destination/timeline-skill-backup-auto-v1" digest
+  [[ ! -L "$destination" && ! -L "$destination/skills" ]] || return 0
+  [[ -d "$target" && ! -L "$target" && -f "$target/SKILL.md" && ! -L "$target/SKILL.md" ]] || return 0
+  [[ ! -e "$backup" && ! -L "$backup" ]] || return 0
+  [[ -z "$(find "$target" -mindepth 1 ! -path "$target/SKILL.md" -print -quit)" ]] || return 0
+  if command -v shasum >/dev/null 2>&1; then digest="$(shasum -a 256 < "$target/SKILL.md")"
+  elif command -v sha256sum >/dev/null 2>&1; then digest="$(sha256sum < "$target/SKILL.md")"
+  else return 0; fi
+  [[ "${digest%% *}" == 391b840bf370758bee555cacdf876f22c53728ed9b9739a70544fc825de03713 ]] || return 0
+  [[ -f "$source_root/skills/timeline/SKILL.md" ]] || return 0
+  cmp -s "$target/SKILL.md" "$source_root/skills/timeline/SKILL.md" && return 0
+  mkdir -m 700 "$backup" || return 0
+  mv "$target" "$backup/timeline"
+  printf 'Backed up bundled timeline skill to %s\n' "$backup/timeline"
+}
+migrate_bundled_timeline
+
 migrate_bundled_code_review() {
-  local target="$destination/skills/code-review" backup="$destination/code-review-skill-backup-seed-v1"
-  local expected relative digest entry count=0
+  local target="$destination/skills/code-review" backup version
+  local expected current relative digest entry count=0
   local -a hash_command
   [[ ! -L "$destination" && ! -L "$destination/skills" && -d "$target" && ! -L "$target" ]] || return 0
-  [[ ! -e "$backup" && ! -L "$backup" && -f "$source_root/skills/code-review/SKILL.md" ]] || return 0
+  [[ -f "$target/SKILL.md" && ! -L "$target/SKILL.md" && -f "$source_root/skills/code-review/SKILL.md" ]] || return 0
   if command -v shasum >/dev/null 2>&1; then hash_command=(shasum -a 256)
   elif command -v sha256sum >/dev/null 2>&1; then hash_command=(sha256sum)
   else return 0; fi
+  digest="$("${hash_command[@]}" < "$target/SKILL.md")" || return 0
+  case "${digest%% *}" in
+    2d76f548e597936f4d8bb9a78e91e86f320bedec676722190593d60218ea1965) version=seed-v1 ;;
+    f7136d7e31e53cde8f1bf0cc0583031ad967855e89616c0c515049c0d48a788a) version=final-report-v1 ;;
+    *) return 0 ;;
+  esac
+  backup="$destination/code-review-skill-backup-$version"
+  [[ ! -e "$backup" && ! -L "$backup" ]] || return 0
   while IFS= read -r -d '' entry; do
     [[ ! -L "$entry" ]] || return 0
     count=$((count + 1))
   done < <(find "$target" -mindepth 1 -print0)
   [[ "$count" == 7 ]] || return 0
-  while read -r expected relative; do
+  while read -r expected current relative; do
+    [[ "$version" != final-report-v1 ]] || expected="$current"
     [[ -f "$target/$relative" ]] || return 0
     digest="$("${hash_command[@]}" < "$target/$relative")" || return 0
     [[ "${digest%% *}" == "$expected" ]] || return 0
   done <<'CODE_REVIEW_SEED'
-2d76f548e597936f4d8bb9a78e91e86f320bedec676722190593d60218ea1965 SKILL.md
-9f4227c445e90f344c521a1605a0551e1c195fa60c585ea3e8829e2a838de5a2 references/actions.md
-fea96bf5e2fe946abade0cfd18f9be59153d4fe5e017ec8631937e701b4cf48c references/angles.md
-03f0047f732cf83cda10f51532a473d6882f68edfacfb3fdbac8f82b5d8de523 references/levels.md
-269a3f84a58def88053a8bd5e21ee4fa1c10e2b0f61ca594fa2f218a3f2170aa references/origin.md
-6f1e90fb521f9f1aaeaa5c0e379efb0dd4834dcde0ba782fe18da41fa1d8c556 references/scope.md
+2d76f548e597936f4d8bb9a78e91e86f320bedec676722190593d60218ea1965 f7136d7e31e53cde8f1bf0cc0583031ad967855e89616c0c515049c0d48a788a SKILL.md
+9f4227c445e90f344c521a1605a0551e1c195fa60c585ea3e8829e2a838de5a2 fb86fbda52c232436c0ef2618716b6ee06acb6d0803711ac7aa004bf2b655cf4 references/actions.md
+fea96bf5e2fe946abade0cfd18f9be59153d4fe5e017ec8631937e701b4cf48c fea96bf5e2fe946abade0cfd18f9be59153d4fe5e017ec8631937e701b4cf48c references/angles.md
+03f0047f732cf83cda10f51532a473d6882f68edfacfb3fdbac8f82b5d8de523 00879d045e77a0292f079a178daa834c6bb0cd3580294115bc09d1ae8cb4d41b references/levels.md
+269a3f84a58def88053a8bd5e21ee4fa1c10e2b0f61ca594fa2f218a3f2170aa 269a3f84a58def88053a8bd5e21ee4fa1c10e2b0f61ca594fa2f218a3f2170aa references/origin.md
+6f1e90fb521f9f1aaeaa5c0e379efb0dd4834dcde0ba782fe18da41fa1d8c556 6f1e90fb521f9f1aaeaa5c0e379efb0dd4834dcde0ba782fe18da41fa1d8c556 references/scope.md
 CODE_REVIEW_SEED
   diff -qr "$target" "$source_root/skills/code-review" >/dev/null && return 0
   mkdir -m 700 "$backup" || return 0

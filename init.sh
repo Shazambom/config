@@ -2,8 +2,8 @@
 
 set -euo pipefail
 repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-if [[ $# -gt 1 || ( $# -eq 1 && "$1" != "--pi" ) ]]; then
-  echo 'Usage: init.sh [--pi] (default: Pi and Neovim; --pi: Pi only)' >&2
+if [[ $# -gt 1 || ( $# -eq 1 && "$1" != "--pi" && "$1" != "--pi-no-terminal" ) ]]; then
+  echo 'Usage: init.sh [--pi | --pi-no-terminal] (default: Pi and Neovim; --pi-no-terminal skips tmux/iTerm setup)' >&2
   exit 1
 fi
 
@@ -35,10 +35,12 @@ export CONFIG_PI_GLOBAL_PREFIX="$pi_global_prefix"
   source "$repo/pi/jq.sh"
   ensure_pi_jq
   bash "$repo/pi/setup.sh"
-  bash "$repo/tmux/setup.sh"
-  bash "$repo/iterm2/setup.sh"
-  if ! bash "$repo/iterm2/runtime.sh"; then
-    printf '%s\n' 'iTerm2 tab helper setup failed; Pi can still launch without repositioning.' >&2
+  if [[ "${1:-}" != "--pi-no-terminal" ]]; then
+    bash "$repo/tmux/setup.sh"
+    bash "$repo/iterm2/setup.sh"
+    if ! bash "$repo/iterm2/runtime.sh"; then
+      printf '%s\n' 'iTerm2 tab helper setup failed; Pi can still launch without repositioning.' >&2
+    fi
   fi
   if [[ "$CONFIG_PI_GLOBAL_NEEDS_NODE" == 1 ]]; then
     mkdir -p "$pi_global_prefix/bin"
@@ -54,7 +56,7 @@ if [[ -n "$pi_global_prefix" ]]; then
   esac
 fi
 printf '%s\n' 'Pi setup complete.' >&2
-[[ "${1:-}" != "--pi" ]] || exit 0
+[[ $# == 0 ]] || exit 0
 
 printf '%s\n' 'Setting up Neovim...' >&2
 cd "$repo"

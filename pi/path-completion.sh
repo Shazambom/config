@@ -85,7 +85,7 @@ pi_patch_completion() {
 }
 
 pi_patch_completion_bundle() {
-  local package="$1" policy="$2" patch_file="$3" version chunk original previous deferred patched
+  local package="$1" policy="$2" patch_file="$3" version chunk original previous deferred patched with_width
   version="$(jq -er 'select(.name == "@earendil-works/pi-coding-agent") | .version' "$package/package.json")" || {
     echo "Cannot identify Pi bundle at $package" >&2; return 1;
   }
@@ -95,18 +95,22 @@ pi_patch_completion_bundle() {
       original=3d8b2dec97ff9fe4cabef1c69899b00cb8257c625fb0f66c52f4d9914a6b4232
       previous=d0b3a89c146f56473281c547a18860c88f8c30c441bbb519d8f0fd965ff2c06b
       deferred=03c79f7d6762c0e9d05d253350655d03d2157df39d7a5ee0bde7fa370aeaa72b
-      patched=656d3db6f8080d6906694c8371ea59c69a371826813400e3ff3516d2deec8e06 ;;
+      patched=656d3db6f8080d6906694c8371ea59c69a371826813400e3ff3516d2deec8e06
+      with_width=15c6274dd69a868d4b55ab47e63b70f7f0c3cf60124ad92a60d627efbee08e96 ;;
     0.87.0)
       chunk=chunk-4DKZACXI.js
       original=2b60c86e356ef338ab1cea32b63f8f01e8d8d3bb7f14342fcc876a8d9a8b5505
       previous=79024e5dadb6103025c4962c5d858425f0634893bdf2200ebe388f9591488ddd
       deferred=a556403f07e83482e6ec7b6edd4b7b1b881c7e2de7a6b1649618302a495b3726
-      patched=1ba7ad08cbad8e2dc597fc2b9dc6263dd2a4d18761b0176bf214bdfd7e52b848 ;;
+      patched=1ba7ad08cbad8e2dc597fc2b9dc6263dd2a4d18761b0176bf214bdfd7e52b848
+      with_width=11474157714a8ac77e2cfc4ea3b77f3c05d37cf3406936dd6137b7d733c829fc ;;
     *) echo "Unrecognized Pi bundle $version; autocomplete patch not applied: $package" >&2; return 1 ;;
   esac
   if [[ "$policy" == pinned && "$version" != 0.85.1 ]]; then
     echo "Pinned Pi version changed; review autocomplete patch: $package" >&2; return 1
   fi
+  # This exact later bundle already contains all autocomplete stages.
+  [[ "$(pi_completion_hash "$package/dist/bundle/chunks/$chunk")" != "$with_width" ]] || return 0
   pi_patch_completion_file "$package/dist/bundle/chunks/$chunk" "$original" "$previous" "$deferred" "$patched" "$patch_file" \
     "$(dirname -- "$patch_file")/path-completion-bundle-accept.json" "$(dirname -- "$patch_file")/path-completion-bundle-focus.json"
 }
