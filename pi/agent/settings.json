@@ -11,7 +11,7 @@
   "enableSkillCommands": true,
   "skills": ["~/.claude/skills"],
   "prompts": [],
-  "extensions": ["-builtin:mcp"],
+  "extensions": ["./lifecycle/session-lifecycle.ts", "-builtin:mcp"],
   "compaction": {
     "enabled": true,
     "reserveTokens": 128000,
