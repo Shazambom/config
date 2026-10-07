@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,6 +19,7 @@ const jiti = createJiti(import.meta.url, { alias: {
 const { preflightModel, modelOptions, permanentProviderFailure } = await jiti.import(join(root, 'pi-extension/subagents/model-preflight.ts'));
 const childExtension = (await jiti.import(join(root, 'pi-extension/subagents/subagent-done.ts'))).default;
 const temp = mkdtempSync(join(tmpdir(), 'pi-provider-fixture-'));
+let stopAdapter;
 const syntheticModel = { id: 'test', name: 'test', reasoning: false, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000, maxTokens: 100 };
 try {
   const credentials = new InMemoryCredentialStore();
@@ -108,11 +110,21 @@ try {
   mkdirSync(agentsDir, { recursive: true });
   writeFileSync(join(agentsDir, 'fixture.md'), '---\nname: fixture\ndescription: test\n---\nTest only.\n');
   writeFileSync(join(agentsDir, 'unsupported.md'), '---\nname: unsupported\ndescription: test\nmodel: absent/model\n---\nTest only.\n');
-  const tools = new Map();
+  const tools = new Map(), lifecycle = new Map(), events = new EventEmitter();
+  let activeTools = [];
   const extension = await jiti.import(join(root, 'pi-extension/subagents/index.ts'));
-  extension.default({ on() {}, registerTool: tool => tools.set(tool.name, tool), registerCommand() {}, registerMessageRenderer() {} });
   const sessionManager = SessionManager.create(temp, join(temp, 'sessions'));
-  const parentCtx = { ...ctx, cwd: temp, sessionManager };
+  const parentCtx = { ...ctx, cwd: temp, sessionManager, hasUI: false, isIdle: () => true, hasPendingMessages: () => false, ui: { notify() {} }, shutdown() {} };
+  extension.default({
+    on(name, callback) { const callbacks = lifecycle.get(name) ?? []; callbacks.push(callback); lifecycle.set(name, callbacks); },
+    events: { emit: (name, value) => events.emit(name, value), on(name, callback) { events.on(name, callback); return () => events.off(name, callback); } },
+    registerTool: tool => tools.set(tool.name, tool), registerCommand() {}, registerMessageRenderer() {},
+    getActiveTools: () => activeTools, setActiveTools: value => { activeTools = value; },
+  });
+  stopAdapter = async () => { for (const callback of lifecycle.get('session_shutdown') ?? []) await callback({ type: 'session_shutdown', reason: 'quit' }, parentCtx); };
+  // Launch admission is a lifecycle boundary, not a provider-preflight mock.
+  // Run every real startup callback in registration order with a real event bus.
+  for (const callback of lifecycle.get('session_start') ?? []) await callback({ type: 'session_start', reason: 'startup' }, parentCtx);
   const spawn = args => tools.get('subagent').execute('fixture', args, undefined, undefined, parentCtx);
   await assert.rejects(spawn({ agent: 'fixture', model: `${missing.provider}/${missing.id}`, task: 'never launched' }), /missing provider credentials/);
   await assert.rejects(spawn({ agent: 'unsupported', task: 'never launched' }), /absent\/model/);
@@ -135,6 +147,7 @@ try {
   process.env.TMUX = join(temp, 'nonexistent-socket');
   await assert.rejects(tools.get('subagent_message').execute('resume', { name: 'saved', message: 'never launched' }, undefined, undefined, parentCtx), /missing provider credentials/);
   assert(!existsSync(join(temp, 'pane-call')), 'Preflight must not call tmux');
+  await stopAdapter(); stopAdapter = undefined;
   let parentTurns = 0;
   const toolProvider = { ...syntheticProvider, streamSimple: model => {
     const stream = createAssistantMessageEventStream();
@@ -156,4 +169,4 @@ try {
   parentSession.dispose();
   assert.equal(networkRequests, 0, 'No network/auth/model calls are allowed');
   console.log('PASS: SDK OAuth/API key/env/custom auth and OAuth refresh; spawn/resume no-pane failures and parent inheritance; actual tool isError; permanent child error closes once without retries.');
-} finally { rmSync(temp, { recursive: true, force: true }); }
+} finally { await stopAdapter?.(); rmSync(temp, { recursive: true, force: true }); }

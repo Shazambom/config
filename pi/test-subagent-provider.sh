@@ -5,7 +5,7 @@ source "$repo/pi/bootstrap.sh"
 test_dir="$(mktemp -d "${TMPDIR:-/tmp}/pi-subagent-provider.XXXXXX")"
 trap 'rm -rf -- "$test_dir"' EXIT
 for name in $(compgen -e); do
-  case "$name" in *API_KEY*|*TOKEN*|*SECRET*|PI_SUBAGENT*|PI_CODING_AGENT_DIR) unset "$name" ;; esac
+  case "$name" in *API_KEY*|*TOKEN*|*SECRET*|PI_SUBAGENT*|PI_TEAM*|PI_LIFECYCLE_OWNER|PI_CODING_AGENT_DIR) unset "$name" ;; esac
 done
 export HOME="$test_dir/home" PI_CODING_AGENT_DIR="$test_dir/agent" PI_OFFLINE=1
 mkdir -p "$HOME" "$PI_CODING_AGENT_DIR"

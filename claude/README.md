@@ -48,6 +48,11 @@ update. Setup preserves customized review skills and commands.
   Examples and language guides live under `skills/design/references/`; complete
   package snapshots use `.txt` suffixes. Run `DESIGN_REQUIRE_TOOLS=1 bash
   claude/test-design-languages.sh` after full `./init.sh` to check all examples.
+- Repository-authored: `artifact`, a manual-only design pass that builds one
+  self-contained HTML page with a written design plan, both themes, inline SVG
+  diagrams, and a single render check. It generalizes Claude Code's built-in
+  artifact-design and artifact-diagramming skills for any agent and host, and adds
+  lessons from tracing a real run. Invoke with `/skill:artifact`.
 
 There were no destination name collisions in this snapshot. Only skills and
 commands were imported, not Claude settings, sessions, credentials, or MCP config.

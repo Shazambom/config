@@ -39,19 +39,66 @@
 +		runtime.refreshFooterGauges(ctx.sessionManager.getBranch() as Entry[], ctx.getContextUsage?.()?.tokens ?? null);
 +	});
 +
+@@ -56 +62,2 @@
+-	pi.on("session_shutdown", () => {
++	pi.on("session_shutdown", async () => {
++		runtime.enabled = false;
+@@ -58,0 +66 @@
++		await Promise.all([runtime.whenObserversIdle(), runtime.consolidatorTask]);
 --- a/src/runtime.ts
 +++ b/src/runtime.ts
-@@ -11,0 +12 @@
+@@ -0,0 +1,2 @@
++import { execFileSync } from "node:child_process";
++import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+@@ -11,0 +14 @@
 +	mainModel: { provider: string; id: string } | undefined;
-@@ -12,0 +14,5 @@
+@@ -12,0 +16,5 @@
 +	get compactionThreshold(): number {
 +		const key = this.mainModel ? `${this.mainModel.provider}/${this.mainModel.id}` : "";
 +		return this.config.compactAtContextTokensByModel[key] ?? this.config.compactAtContextTokens;
 +	}
 +
-@@ -124 +130 @@
+@@ -13,0 +22,27 @@
++	private lifecycleManaged = false;
++	private selfStarted: string | undefined;
++
++	/** Query synchronously at dispatch and again before committing a worker result. */
++	workerOwner(pi: ExtensionAPI): string | undefined {
++		const replies: any[] = [];
++		pi.events.emit("session-lifecycle:admission", { respond: (value: any) => {
++			this.lifecycleManaged ||= value?.managed === true;
++			replies.push(value);
++		} });
++		const inherited = process.env.PI_LIFECYCLE_OWNER;
++		if (replies.length === 0 && !this.lifecycleManaged && inherited === undefined) return undefined;
++		const value = replies[0];
++		if (replies.length !== 1 || value?.managed !== true || value.status !== "owned" ||
++			typeof value.sessionFile !== "string" || !value.sessionFile.trim() ||
++			typeof value.generation !== "string" || !value.generation.trim()) {
++			throw new Error("OM worker admission blocked");
++		}
++		if (inherited !== undefined) return inherited;
++		const started = this.selfStarted ?? execFileSync("ps", ["-p", String(process.pid), "-o", "lstart="], {
++			encoding: "utf8", timeout: 1000,
++		}).trim();
++		if (!started) throw new Error("OM worker admission missing root identity");
++		this.selfStarted = started;
++		return JSON.stringify({ pid: process.pid, started, sessionFile: value.sessionFile, generation: value.generation });
++	}
++
+@@ -40,0 +76 @@
++	consolidatorTask: Promise<void> | undefined;
+@@ -124 +160 @@
 -			ctxMax: this.config.compactAtContextTokens,
 +			ctxMax: this.compactionThreshold,
+@@ -138 +174 @@
+-	/** Abort and forget all in-flight workers (session shutdown / disable). */
++	/** Abort all in-flight workers; their tasks retain bookkeeping until settlement. */
+@@ -144 +179,0 @@
+-		this.observersInFlight.clear();
+@@ -146,2 +180,0 @@
+-		this.consolidatorController = undefined;
+-		this.consolidatorInFlight = false;
 --- a/src/hooks/compaction-trigger.ts
 +++ b/src/hooks/compaction-trigger.ts
 @@ -77 +77 @@
@@ -62,3 +109,95 @@
 @@ -37 +37 @@
 -				`  context: ${contextTokens != null ? contextTokens.toLocaleString() : "?"} / ${runtime.config.compactAtContextTokens.toLocaleString()} tok`,
 +				`  context: ${contextTokens != null ? contextTokens.toLocaleString() : "?"} / ${runtime.compactionThreshold.toLocaleString()} tok`,
+--- a/src/hooks/observer-trigger.ts
++++ b/src/hooks/observer-trigger.ts
+@@ -73,0 +74 @@
++	try { runtime.workerOwner(pi); } catch { return; }
+@@ -146,0 +148 @@
++		const owner = runtime.workerOwner(pi);
+@@ -148,0 +151 @@
++			owner,
+@@ -152 +155 @@
+-		const env = buildWorkerEnv("observer", { memoryRoot: runtime.memoryRoot, runId });
++		const env = buildWorkerEnv("observer", { memoryRoot: runtime.memoryRoot, runId, owner });
+@@ -153,0 +157 @@
++		if (controller.signal.aborted || runtime.workerOwner(pi) !== owner) return;
+@@ -182,0 +187 @@
++		if (controller.signal.aborted) return;
+--- a/src/hooks/consolidator-trigger.ts
++++ b/src/hooks/consolidator-trigger.ts
+@@ -83,0 +84 @@
++	try { runtime.workerOwner(pi); } catch { return; }
+@@ -98 +99 @@
+-	void dispatchConsolidator(pi, runtime, ctx, promote);
++	runtime.consolidatorTask = dispatchConsolidator(pi, runtime, ctx, promote);
+@@ -113,0 +115 @@
++		const owner = runtime.workerOwner(pi);
+@@ -115,0 +118 @@
++			owner,
+@@ -119 +122 @@
+-		const env = buildWorkerEnv("consolidator", { memoryRoot: runtime.memoryRoot, runId });
++		const env = buildWorkerEnv("consolidator", { memoryRoot: runtime.memoryRoot, runId, owner });
+@@ -120,0 +124 @@
++		if (controller.signal.aborted || runtime.workerOwner(pi) !== owner) return;
+@@ -149,0 +154 @@
++		if (controller.signal.aborted) return;
+--- a/src/spawn/launch.ts
++++ b/src/spawn/launch.ts
+@@ -13,0 +14 @@
++import { getAgentDir } from "@earendil-works/pi-coding-agent";
+@@ -44,0 +46 @@
++	owner?: string;
+@@ -57,0 +60 @@
++	if (opts.owner !== undefined) args.push("-e", join(getAgentDir(), "lifecycle", "session-lifecycle.ts"));
+@@ -73 +76 @@
+-export function spawnWorker(opts: {
++export async function spawnWorker(opts: {
+@@ -78,0 +82 @@
++	opts.signal?.throwIfAborted();
+@@ -87,0 +92,9 @@
++		let killTimer: ReturnType<typeof setTimeout> | undefined;
++		const kill = () => {
++			if (proc.exitCode !== null || proc.signalCode !== null) return;
++			proc.kill("SIGTERM");
++			killTimer = setTimeout(() => {
++				if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
++			}, 3000);
++			killTimer.unref?.();
++		};
+@@ -88 +101 @@
+-		proc.stderr?.on("data", (d: Buffer) => {
++		const onData = (d: Buffer) => {
+@@ -90,14 +103,14 @@
+-		});
+-		proc.on("error", () => resolvePromise({ code: 1, signal: null, stderr: stderr || "spawn error" }));
+-		proc.on("close", (code, signal) => resolvePromise({ code, signal, stderr }));
+-
+-		if (opts.signal) {
+-			const kill = () => {
+-				proc.kill("SIGTERM");
+-				setTimeout(() => {
+-					if (!proc.killed) proc.kill("SIGKILL");
+-				}, 3000).unref?.();
+-			};
+-			if (opts.signal.aborted) kill();
+-			else opts.signal.addEventListener("abort", kill, { once: true });
+-		}
++		};
++		const onError = () => { stderr ||= "spawn error"; };
++		proc.stderr?.on("data", onData);
++		proc.on("error", onError);
++		proc.once("close", (code, signal) => {
++			clearTimeout(killTimer);
++			opts.signal?.removeEventListener("abort", kill);
++			proc.stderr?.removeListener("data", onData);
++			proc.removeListener("error", onError);
++			resolvePromise({ code, signal, stderr });
++		});
++
++		if (opts.signal?.aborted) kill();
++		else opts.signal?.addEventListener("abort", kill, { once: true });
+@@ -110,0 +124 @@
++	owner?: string;
+@@ -122,0 +137 @@
++		...(opts.owner !== undefined ? { PI_LIFECYCLE_OWNER: opts.owner } : {}),

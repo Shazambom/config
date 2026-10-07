@@ -165,7 +165,8 @@ a subagent task is ordinary task text, not a native command invocation: tell the
 child to call `load_workflow` with that name. Manual-only skills remain hidden
 from automatic model selection but can be loaded by explicit name. `timeline` is
 manual-only: invoke `/skill:timeline` or explicitly ask to use the timeline skill.
-Generic debugging requests do not activate it. Lookup does
+Generic debugging requests do not activate it. `artifact` is manual-only the same
+way: a request for a page or diagram does not activate it. Lookup does
 not execute a workflow or supply tools that its instructions require.
 
 Skills also appear in the model's available-skills list. References, assets,
