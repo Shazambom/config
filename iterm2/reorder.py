@@ -153,6 +153,24 @@ async def monitor(api, connection, source, ready, timeout=18, interval=0.1,
                     # a user reorder, which must not be overwritten.
                     if ids != survivors + [candidate.tab_id]:
                         raise Stop("new tab position changed")
+                    if len(candidate.sessions) != 1:
+                        raise Stop("tmux tab must contain a single session")
+                    target = candidate.sessions[0]
+                    profile = await target.async_get_profile()
+                    mappings = dict(profile.key_mappings or {})
+                    for character in "cvz":
+                        sequence = "\x1b[{};9u".format(ord(character))
+                        binding = api.KeyBinding(
+                            ord(character), [api.Modifier.COMMAND], None,
+                            api.BindingAction.HEX_CODE,
+                            " ".join("0x{:02x}".format(ord(byte)) for byte in sequence),
+                            None, None)
+                        mappings[binding.key] = binding.encode
+                    override = api.LocalWriteOnlyProfile()
+                    override.set_key_mappings(mappings)
+                    # Session-only: Pi is this pane's root command, so these
+                    # shortcuts disappear with it, not with a shared profile.
+                    await target.async_set_profile_properties(override)
                     ordered = [tab for tab in current.tabs if tab.tab_id != candidate.tab_id]
                     ordered.insert(index, candidate)
                     if [tab.tab_id for tab in ordered] != ids:

@@ -18,8 +18,36 @@ reorder = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(reorder)
 
 
+class Session:
+    def __init__(self, identifier):
+        self.session_id = identifier
+        self.mappings = {"unrelated": {"Action": 0, "Text": "keep"},
+                         "0x63-0x100000": {"Action": 0, "Text": "replace"}}
+        self.writes = []
+
+    async def async_get_profile(self):
+        return NS(key_mappings=self.mappings)
+
+    async def async_set_profile_properties(self, profile):
+        self.writes.append(profile)
+        self.mappings = profile.mappings
+
+
+class KeyBinding:
+    def __init__(self, character, modifiers, keycode, action, param, version, label):
+        assert modifiers == ["command"] and keycode is None
+        assert version is None and label is None
+        self.key = hex(character) + "-0x100000"
+        self.encode = {"Action": action, "Text": param}
+
+
+class LocalWriteOnlyProfile:
+    def set_key_mappings(self, mappings):
+        self.mappings = mappings
+
+
 def tab(name, source=None, connection=None):
-    return NS(tab_id=name, sessions=[NS(session_id=source or name)],
+    return NS(tab_id=name, sessions=[Session(source or name)],
               tmux_connection_id=connection,
               tmux_window_id="@1" if connection else None)
 
@@ -36,6 +64,11 @@ class Window:
 
 
 class API:
+    KeyBinding = KeyBinding
+    LocalWriteOnlyProfile = LocalWriteOnlyProfile
+    Modifier = NS(COMMAND="command")
+    BindingAction = NS(HEX_CODE=11)
+
     def __init__(self):
         self.original = [tab(str(i), "source" if i == 4 else None) for i in range(1, 8)]
         self.window = Window("native", self.original[:])
@@ -99,6 +132,49 @@ class MonitorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(api.window.moves, [["1", "2", "3", "new", "5", "6", "7"]])
         self.assertEqual(api.other.moves, [])
         self.assertEqual(reorder.tab_ids(api.other), ["other-tab"])
+
+    async def test_root_shortcuts_only_on_owned_session(self):
+        api = API()
+        baselines = [session for window in api.windows for item in window.tabs
+                     for session in item.sessions]
+        api.steps = [api.launch]
+        await self.run_monitor(api)
+        target = api.window.tabs[3].sessions[0]
+        self.assertEqual(target.mappings, {
+            "unrelated": {"Action": 0, "Text": "keep"},
+            "0x63-0x100000": {"Action": 11, "Text": "0x1b 0x5b 0x39 0x39 0x3b 0x39 0x75"},
+            "0x76-0x100000": {"Action": 11, "Text": "0x1b 0x5b 0x31 0x31 0x38 0x3b 0x39 0x75"},
+            "0x7a-0x100000": {"Action": 11, "Text": "0x1b 0x5b 0x31 0x32 0x32 0x3b 0x39 0x75"},
+        })
+        self.assertEqual(len(target.writes), 1)
+        self.assertTrue(all(not session.writes for session in baselines))
+
+    async def test_rejects_split_or_empty_target_without_mutation(self):
+        for count in (0, 2):
+            api = API()
+            sessions = [Session("pane" + str(i)) for i in range(count)]
+            def launch():
+                api.launch()
+                api.window.tabs[-1].sessions = sessions
+            api.steps = [launch]
+            with self.assertRaisesRegex(reorder.Stop, "single session"):
+                await self.run_monitor(api)
+            self.assertEqual(api.window.moves, [])
+            self.assertTrue(all(not session.writes for session in sessions))
+
+    async def test_shortcuts_when_last_tab_needs_no_reorder_and_map_is_unset(self):
+        api = API()
+        api.window.tabs.append(api.window.tabs.pop(3))
+        def launch():
+            api.launch()
+            api.window.tabs[-1].sessions[0].mappings = None
+        api.steps = [launch]
+        await self.run_monitor(api)
+        self.assertEqual(api.window.moves, [])
+        target = api.window.tabs[-1].sessions[0]
+        self.assertEqual(set(target.mappings),
+                         {"0x63-0x100000", "0x76-0x100000", "0x7a-0x100000"})
+        self.assertEqual(len(target.writes), 1)
 
     async def test_waits_for_burial(self):
         api = API()

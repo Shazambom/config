@@ -1,4 +1,6 @@
 {
   "tui.altScreen.halfPageUp": "ctrl+u",
-  "tui.altScreen.halfPageDown": "ctrl+d"
+  "tui.altScreen.halfPageDown": "ctrl+d",
+  "app.clipboard.pasteImage": ["ctrl+v", "super+v"],
+  "tui.editor.undo": ["ctrl+-", "super+z"]
 }

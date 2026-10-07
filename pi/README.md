@@ -12,12 +12,16 @@ It keeps the prompt fixed and scrolls the
 transcript inside Pi, avoiding regular-mode history clears when earlier tool
 output changes. Use Home/End or Page Up/Page Down for transcript navigation;
 Ctrl+Home/End still move inside the prompt. Native iTerm2 scrollback is not the
-conversation viewport in this mode. Dragging highlights without copying. Ctrl+C
-copies selected transcript text without clearing the draft; without a selection,
-Ctrl+C retains its normal clear/exit behavior. The native Ctrl+X copy action remains
-available. `pi/agent/extensions/selection-copy.ts` adds the selection-aware shortcut
-without replacing the Vim editor. It defers to open overlays and uses Pi's clipboard
-backend. Hold Shift+Command for iTerm2's native link handling. Inline iTerm2 images display
+conversation viewport in this mode. With `fullscreenCopyOnSelect` disabled,
+dragging only highlights. In a native iTerm2 tab created by the Pi launcher, Cmd+C
+copies the selected transcript text, Cmd+V pastes, and Cmd+Z undoes editor changes.
+Cmd+C does nothing without a selection and defers to open overlays. Ctrl+C retains
+its normal clear/exit behavior. The native Ctrl+X copy action remains available.
+`pi/agent/extensions/selection-copy.ts` handles selection-only Command copy without
+replacing the Vim editor, using Pi's clipboard backend. The launcher forwards these
+three Command shortcuts only in its new Pi pane; shared profiles and the originating
+shell are untouched. Existing-tmux launches and subagent shells do not receive these
+session-local mappings. Start Pi from a fresh iTerm2 tab to use them. Hold Shift+Command for iTerm2's native link handling. Inline iTerm2 images display
 as text placeholders. `/settings` → TUI mode changes the current runtime without
 restarting; `pi --tui-mode regular` overrides the default for one launch.
 
@@ -39,9 +43,11 @@ The standalone SDK/TUI packages are not changed by this optimization.
 `bash pi/test-render-width.sh [coding-agent-package]` checks native-bundle width
 results, avoidance of unnecessary segmentation, deployment guards, and coexistence
 with autocomplete patches. `bash pi/test-init-target.sh` checks deployment scope.
-`bash pi/test-selection-copy.sh [coding-agent-package]` exercises mouse selection,
-Ctrl+C, draft preservation, and overlay handling through the real CLI. Its clipboard
-backend writes only a fixture file, not the user's system clipboard.
+`bash pi/test-selection-copy.sh` exercises the installed CLI's mouse selection,
+Command copy/paste/undo sequences, Vim editor, draft preservation, and overlay handling.
+Its preload blocks OS clipboard access and supplies a fixture clipboard backend.
+`baseline` removes the paste/undo Command aliases in the private test configuration
+and must fail. This checks Pi's actions; the live iTerm2 fixture checks launcher routing.
 
 Run `/path/to/config/init.sh --pi` to deploy this repo's defaults to the
 standard `~/.pi/agent` directory and install global Pi if it is missing.
@@ -600,8 +606,9 @@ iTerm2 opens a native tab and automatically buries the original control tab.
 A short-lived helper captures the source tab before launch, identifies the new
 native tab by its tmux connection, and moves it to the original position. The
 control connection stays alive but out of the way.
-Native scrollback and text selection work normally: drag to select, press `Cmd+C`
-to copy, and `Cmd+V` to paste. No Option modifier is needed.
+Pi fullscreen owns its transcript selection rather than using native scrollback.
+The launcher gives its new Pi pane session-local Cmd+C/V/Z mappings; see the
+fullscreen shortcuts above. Other terminal sessions keep their existing mappings.
 
 On macOS, `init.sh --pi` runs `iterm2/setup.sh` to manage four iTerm2 preferences:
 `OpenTmuxWindowsIn=2`, `AutoHideTmuxClientSession=true`, `CopySelection=false`,

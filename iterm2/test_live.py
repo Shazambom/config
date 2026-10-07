@@ -63,6 +63,15 @@ async def exercise(connection, position, keep):
         origin = window.tabs[position - 1]
         assert len(origin.sessions) == 1, "test origin must have one session"
         source = origin.sessions[0]
+        # Keep maps in memory only: existing bindings can contain private text.
+        baselines = [(session, (await session.async_get_profile()).key_mappings)
+                     for win in app.windows for tab in win.tabs for session in tab.sessions]
+        expected_mappings = {}
+        for key, text in (
+                ("0x63-0x100000", "0x1b 0x5b 0x39 0x39 0x3b 0x39 0x75"),
+                ("0x76-0x100000", "0x1b 0x5b 0x31 0x31 0x38 0x3b 0x39 0x75"),
+                ("0x7a-0x100000", "0x1b 0x5b 0x31 0x32 0x32 0x3b 0x39 0x75")):
+            expected_mappings[key] = {"Action": 11, "Text": text}
         await origin.async_activate()
         command = "unset TMUX TMUX_PANE CONFIG_PI_HOME; "
         command += "TERM_PROGRAM=iTerm.app ITERM_SESSION_ID=" + shlex.quote(source.session_id)
@@ -80,10 +89,21 @@ async def exercise(connection, position, keep):
                 expected = before[:]
                 expected[position - 1] = candidates[0].tab_id
                 if after == expected:
+                    assert len(candidates[0].sessions) == 1, "target must have one session"
+                    target = candidates[0].sessions[0]
+                    actual = (await target.async_get_profile()).key_mappings
+                    # For the last tab, placement can match before the helper
+                    # finishes. Wait for its profile RPC too.
+                    if any((actual or {}).get(key) != value
+                           for key, value in expected_mappings.items()):
+                        await asyncio.sleep(0.1)
+                        continue
+                    for session, mappings in baselines:
+                        assert (await session.async_get_profile()).key_mappings == mappings, "a baseline session's mappings changed"
                     for identifier, order in original_windows.items():
                         untouched = app.get_window_by_id(identifier)
                         assert untouched and [tab.tab_id for tab in untouched.tabs] == order, "an existing window changed"
-                    print("PASS: live iTerm2 seven-tab launch replaced tab {} in place; other tabs/windows unchanged.".format(position))
+                    print("PASS: live iTerm2 seven-tab launch replaced tab {} in place; exact root shortcuts set; baseline session mappings and other tabs/windows unchanged.".format(position))
                     return
             await asyncio.sleep(0.1)
         log = work / "helper.log"
@@ -92,7 +112,7 @@ async def exercise(connection, position, keep):
         else:
             print("No helper log: launcher did not start the helper.")
         print("Test window tab count:", len(window.tabs), "new tmux tab count:", len(candidates))
-        raise AssertionError("native tmux tab did not replace tab {} within 30 seconds".format(position))
+        raise AssertionError("native tmux tab placement or root shortcuts incomplete at position {} within 30 seconds".format(position))
     finally:
         if keep:
             print("Debug window retained; fixture: {} ; tmux socket: {}".format(work, socket))

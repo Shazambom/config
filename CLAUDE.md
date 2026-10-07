@@ -106,6 +106,8 @@ retire disproven advice rather than accumulating contradictions. Keep general
 rules here and feature details in the linked record.
 
 Feature index:
+- [Pi Command shortcuts](docs/lessons/pi-command-shortcuts.md): fullscreen
+  selection, iTerm2/tmux key routing, clipboard isolation, and session-local maps.
 - [Pi session lifecycle](docs/lessons/pi-session-lifecycle.md): saved-session
   ownership, terminal loss, worker shutdown, startup replay, failure handling,
   and isolated deployment verification.

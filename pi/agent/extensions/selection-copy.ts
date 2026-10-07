@@ -14,7 +14,7 @@ export default function (pi: ExtensionAPI) {
       return { render: () => [], invalidate() {} };
     }, { placement: "belowEditor" });
     unsubscribe = ctx.ui.onTerminalInput((data) => {
-      if (!matchesKey(data, "ctrl+c") || isKeyRelease(data) || ui?.mode !== "fullscreen" ||
+      if (!matchesKey(data, "super+c") || isKeyRelease(data) || ui?.mode !== "fullscreen" ||
           ui.hasOverlay() || !ui.hasActiveSelection?.() || !ui.copyActiveSelectionToClipboard) return;
       void ui.copyActiveSelectionToClipboard().catch(() => ctx.ui.notify("Unable to copy selected text", "error"));
       return { consume: true };
