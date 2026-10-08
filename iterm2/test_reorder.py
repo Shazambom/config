@@ -24,13 +24,15 @@ class Session:
         self.mappings = {"unrelated": {"Action": 0, "Text": "keep"},
                          "0x63-0x100000": {"Action": 0, "Text": "replace"}}
         self.writes = []
+        self.properties = {}
 
     async def async_get_profile(self):
-        return NS(key_mappings=self.mappings)
+        return NS(key_mappings=self.mappings, all_properties={**self.properties, 'Keyboard Map': self.mappings})
 
     async def async_set_profile_properties(self, profile):
         self.writes.append(profile)
         self.mappings = profile.mappings
+        self.properties.update(profile.properties)
 
 
 class KeyBinding:
@@ -42,6 +44,10 @@ class KeyBinding:
 
 
 class LocalWriteOnlyProfile:
+    def __init__(self, properties=None):
+        self.properties = properties or {}
+        self.mappings = self.properties.get('Keyboard Map', {})
+
     def set_key_mappings(self, mappings):
         self.mappings = mappings
 
@@ -133,7 +139,7 @@ class MonitorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(api.other.moves, [])
         self.assertEqual(reorder.tab_ids(api.other), ["other-tab"])
 
-    async def test_root_shortcuts_only_on_owned_session(self):
+    async def test_native_copy_and_undo_only_on_owned_session(self):
         api = API()
         baselines = [session for window in api.windows for item in window.tabs
                      for session in item.sessions]
@@ -142,8 +148,6 @@ class MonitorTests(unittest.IsolatedAsyncioTestCase):
         target = api.window.tabs[3].sessions[0]
         self.assertEqual(target.mappings, {
             "unrelated": {"Action": 0, "Text": "keep"},
-            "0x63-0x100000": {"Action": 11, "Text": "0x1b 0x5b 0x39 0x39 0x3b 0x39 0x75"},
-            "0x76-0x100000": {"Action": 11, "Text": "0x1b 0x5b 0x31 0x31 0x38 0x3b 0x39 0x75"},
             "0x7a-0x100000": {"Action": 11, "Text": "0x1b 0x5b 0x31 0x32 0x32 0x3b 0x39 0x75"},
         })
         self.assertEqual(len(target.writes), 1)
@@ -173,7 +177,7 @@ class MonitorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(api.window.moves, [])
         target = api.window.tabs[-1].sessions[0]
         self.assertEqual(set(target.mappings),
-                         {"0x63-0x100000", "0x76-0x100000", "0x7a-0x100000"})
+                         {"0x7a-0x100000"})
         self.assertEqual(len(target.writes), 1)
 
     async def test_waits_for_burial(self):

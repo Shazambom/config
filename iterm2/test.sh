@@ -28,11 +28,12 @@ STUB
 chmod +x "$test_dir/bin/uname" "$test_dir/bin/defaults"
 printf 'keep\n' > "$ITERM_TEST_STATE/UnrelatedSetting"
 bash "$repo/iterm2/setup.sh"
-printf '%s\n' 'OpenTmuxWindowsIn -int 2' 'AutoHideTmuxClientSession -bool true' 'CopySelection -bool false' 'EnableAPIServer -bool true' > "$test_dir/expected"
+printf '%s\n' 'OpenTmuxWindowsIn -int 2' 'AutoHideTmuxClientSession -bool true' 'TmuxUsesDedicatedProfile -bool true' 'CopySelection -bool false' 'EnableAPIServer -bool true' > "$test_dir/expected"
 cmp "$test_dir/expected" "$ITERM_TEST_STATE/writes"
 [[ "$(< "$ITERM_TEST_STATE/UnrelatedSetting")" == keep ]]
 [[ "$(< "$ITERM_TEST_STATE/OpenTmuxWindowsIn")" == 2 ]]
 [[ "$(< "$ITERM_TEST_STATE/AutoHideTmuxClientSession")" == 1 ]]
+[[ "$(< "$ITERM_TEST_STATE/TmuxUsesDedicatedProfile")" == 1 ]]
 [[ "$(< "$ITERM_TEST_STATE/CopySelection")" == 0 ]]
 [[ "$(< "$ITERM_TEST_STATE/EnableAPIServer")" == 1 ]]
 bash "$repo/iterm2/setup.sh"

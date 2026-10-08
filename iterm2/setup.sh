@@ -16,6 +16,7 @@ while read -r key type value expected; do
 done <<'PREFERENCES'
 OpenTmuxWindowsIn -int 2 2
 AutoHideTmuxClientSession -bool true 1
+TmuxUsesDedicatedProfile -bool true 1
 CopySelection -bool false 0
 EnableAPIServer -bool true 1
 PREFERENCES

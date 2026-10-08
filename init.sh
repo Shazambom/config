@@ -40,6 +40,11 @@ export CONFIG_PI_GLOBAL_PREFIX="$pi_global_prefix"
     bash "$repo/iterm2/setup.sh"
     if ! bash "$repo/iterm2/runtime.sh"; then
       printf '%s\n' 'iTerm2 tab helper setup failed; Pi can still launch without repositioning.' >&2
+    elif [[ -z "${CONFIG_PI_HOME:-}" && "$(uname -s)" == Darwin &&
+            "$(defaults read com.googlecode.iterm2 LoadPrefsFromCustomFolder 2>/dev/null || true)" != 1 ]] && pgrep -x iTerm2 >/dev/null; then
+      if ! "$HOME/.config/portable-pi/iterm2-venv/bin/python3" "$repo/iterm2/reorder.py" --native-selection; then
+        printf '%s\n' 'iTerm2 native copy/paste setup failed; existing terminal preferences were not fully updated.' >&2
+      fi
     fi
   fi
   if [[ "$CONFIG_PI_GLOBAL_NEEDS_NODE" == 1 ]]; then

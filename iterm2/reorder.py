@@ -5,6 +5,7 @@ import asyncio
 import contextlib
 import fcntl
 import hashlib
+import json
 import os
 import signal
 import stat
@@ -63,6 +64,49 @@ class Readiness:
             self.sent = True
         finally:
             os.close(fd)
+
+
+def native_selection_properties(properties):
+    """Native selection and paste, with wheel events still delivered to Pi."""
+    wanted = {"Mouse Reporting": True,
+              "Mouse Reporting allow mouse wheel": True,
+              "Mouse Reporting allow clicks and drags": False}
+    mappings = properties.get("Keyboard Map") or {}
+    native_keys = (("0x63", "0x100000"), ("0x76", "0x100000"))
+    kept = {key: value for key, value in mappings.items()
+            if tuple(key.split("-", 2)[:2]) not in native_keys}
+    if kept != mappings:
+        wanted["Keyboard Map"] = kept
+    return {key: value for key, value in wanted.items()
+            if properties.get(key) != value}
+
+
+async def configure_native_selection(api, connection):
+    # iTerm's built-in dedicated tmux profile supplies future windows, splits,
+    # and reattachments. Updating only a visible pane does not survive these.
+    profiles = await api.PartialProfile.async_query(connection)
+    matches = [profile for profile in profiles if profile.name == "tmux"]
+    if len(matches) != 1:
+        raise Stop("expected one saved tmux profile; open a native tmux session and rerun setup")
+    profile = await matches[0].async_get_full_profile()
+    changes = native_selection_properties(profile.all_properties)
+    if changes:
+        reply = await api.rpc.async_set_profile_properties_json(
+            connection, None, [(key, json.dumps(value)) for key, value in changes.items()],
+            guids=[profile.guid])
+        if reply.set_profile_property_response.status != 0:
+            raise Stop("could not save native tmux selection preferences")
+    app = await api.async_get_app(connection)
+    await app.async_refresh()
+    for window in app.windows:
+        for tab in window.tabs:
+            if not tab.tmux_connection_id:
+                continue
+            for session in tab.sessions:
+                profile = await session.async_get_profile()
+                changes = native_selection_properties(profile.all_properties)
+                if changes:
+                    await session.async_set_profile_properties(api.LocalWriteOnlyProfile(changes))
 
 
 def tab_ids(window):
@@ -157,8 +201,9 @@ async def monitor(api, connection, source, ready, timeout=18, interval=0.1,
                         raise Stop("tmux tab must contain a single session")
                     target = candidate.sessions[0]
                     profile = await target.async_get_profile()
-                    mappings = dict(profile.key_mappings or {})
-                    for character in "cvz":
+                    changes = native_selection_properties(profile.all_properties)
+                    mappings = dict(changes.get("Keyboard Map", profile.key_mappings) or {})
+                    for character in "z":
                         sequence = "\x1b[{};9u".format(ord(character))
                         binding = api.KeyBinding(
                             ord(character), [api.Modifier.COMMAND], None,
@@ -166,10 +211,10 @@ async def monitor(api, connection, source, ready, timeout=18, interval=0.1,
                             " ".join("0x{:02x}".format(ord(byte)) for byte in sequence),
                             None, None)
                         mappings[binding.key] = binding.encode
-                    override = api.LocalWriteOnlyProfile()
+                    override = api.LocalWriteOnlyProfile(changes)
                     override.set_key_mappings(mappings)
-                    # Session-only: Pi is this pane's root command, so these
-                    # shortcuts disappear with it, not with a shared profile.
+                    # Only the optional Command undo alias is pane-local.
+                    # Copy/paste are native actions, not injected key sequences.
                     await target.async_set_profile_properties(override)
                     ordered = [tab for tab in current.tabs if tab.tab_id != candidate.tab_id]
                     ordered.insert(index, candidate)
@@ -182,11 +227,12 @@ async def monitor(api, connection, source, ready, timeout=18, interval=0.1,
 
 def main(argv=None):
     args = sys.argv[1:] if argv is None else argv
-    if len(args) != 2 or not args[0].split(":")[-1]:
-        print("iterm2 reorder: expected ORIGIN_SESSION_ID READY_FIFO", file=sys.stderr)
+    native_only = args == ["--native-selection"]
+    if not native_only and (len(args) != 2 or not args[0].split(":")[-1]):
+        print("iterm2 reorder: expected ORIGIN_SESSION_ID READY_FIFO or --native-selection", file=sys.stderr)
         return 1
-    source = args[0].split(":")[-1]
-    ready = Readiness(args[1])
+    source = args[0].split(":")[-1] if not native_only else None
+    ready = Readiness(args[1]) if not native_only else None
 
     def interrupt(_signum, _frame):
         raise Interrupted()
@@ -204,7 +250,10 @@ def main(argv=None):
             async def connected(connection):
                 nonlocal failure
                 try:
-                    await monitor(iterm2, connection, source, ready)
+                    if native_only:
+                        await configure_native_selection(iterm2, connection)
+                    else:
+                        await monitor(iterm2, connection, source, ready)
                 except Stop as error:
                     failure = str(error)
                 except Exception:
@@ -219,7 +268,8 @@ def main(argv=None):
         signal.setitimer(signal.ITIMER_REAL, 0)
     if failure:
         try:
-            ready.send("FAIL")
+            if ready:
+                ready.send("FAIL")
         except (OSError, Stop):
             pass
         print("iterm2 reorder: " + failure, file=sys.stderr)

@@ -10,18 +10,29 @@ The reported resize lag remains unresolved.
 Pi defaults to native `fullscreen` rendering, which upstream labels experimental.
 It keeps the prompt fixed and scrolls the
 transcript inside Pi, avoiding regular-mode history clears when earlier tool
-output changes. Use Home/End or Page Up/Page Down for transcript navigation;
+output changes. Use Home/End or Page Up/Page Down for transcript navigation.
+In Vim normal mode, standalone `G` jumps to the conversation's bottom; insert-mode
+text, overlays, and pending Vim commands keep their own input handling.
 Ctrl+Home/End still move inside the prompt. Native iTerm2 scrollback is not the
-conversation viewport in this mode. With `fullscreenCopyOnSelect` disabled,
-dragging only highlights. In a native iTerm2 tab created by the Pi launcher, Cmd+C
-copies the selected transcript text, Cmd+V pastes, and Cmd+Z undoes editor changes.
-Cmd+C does nothing without a selection and defers to open overlays. Ctrl+C retains
-its normal clear/exit behavior. The native Ctrl+X copy action remains available.
-`pi/agent/extensions/selection-copy.ts` handles selection-only Command copy without
-replacing the Vim editor, using Pi's clipboard backend. The launcher forwards these
-three Command shortcuts only in its new Pi pane; shared profiles and the originating
-shell are untouched. Existing-tmux launches and subagent shells do not receive these
-session-local mappings. Start Pi from a fresh iTerm2 tab to use them. Hold Shift+Command for iTerm2's native link handling. Inline iTerm2 images display
+conversation viewport in this mode. In iTerm2-integrated tmux panes, dragging uses
+native terminal selection. Cmd+C copies highlighted visible text, including text
+in overlays; Cmd+V uses native paste. Copy does not fall back to Ctrl+C, and dragging
+does not auto-copy. Ctrl+C retains its normal clear/exit behavior. The native Ctrl+X
+copy action remains available.
+
+`./init.sh --pi` configures iTerm2's saved `tmux` profile and updates existing
+integrated panes, removing the old Command C/V forwarding mappings. Click/drag
+reporting is disabled while mouse-wheel reporting remains enabled. This affects
+**all applications in integrated tmux panes**, not just Pi: use keyboard controls
+rather than application mouse clicks. Native multiline selection includes visible
+indentation/gutters. Normal non-tmux profiles are not modified. Setup requires a
+running, API-enabled iTerm2 with its built-in `tmux` profile; if that profile has not
+yet been created, open a native tmux session and rerun setup. External preference
+folders are left untouched.
+
+Cmd+Z still uses a session-local undo alias in launcher-created Pi root panes.
+`pi/agent/extensions/selection-copy.ts` remains a Pi-owned-selection fallback for
+terminals delivering Super+C; native iTerm2 copy/paste does not depend on it. Hold Shift+Command for iTerm2's native link handling. Inline iTerm2 images display
 as text placeholders. `/settings` → TUI mode changes the current runtime without
 restarting; `pi --tui-mode regular` overrides the default for one launch.
 
