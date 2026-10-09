@@ -125,6 +125,25 @@ try {
   // Launch admission is a lifecycle boundary, not a provider-preflight mock.
   // Run every real startup callback in registration order with a real event bus.
   for (const callback of lifecycle.get('session_start') ?? []) await callback({ type: 'session_start', reason: 'startup' }, parentCtx);
+  // Exercise the model-facing tool, not just its formatting helper: every
+  // authenticated model must survive discovery, including same-provider peers.
+  const listed = await tools.get('subagents_list').execute('discovery', {}, undefined, undefined, parentCtx);
+  const listedText = listed.content.filter(part => part.type === 'text').map(part => part.text).join('\n');
+  const inventory = listedText.slice(listedText.indexOf('Models with configured credentials'));
+  const names = inventory.split(/[\s,]+/);
+  const available = registry.getAvailable();
+  assert(available.filter(item => item.provider === model.provider).length > 1);
+  for (const item of available) {
+    assert(names.includes(`${item.provider}/${item.id}`), `Discovery omitted ${item.provider}/${item.id}`);
+  }
+  assert(!inventory.includes('openrouter/'));
+  assert(!inventory.includes('synthetic-'));
+  assert.match(inventory, /credential-presence checks, not token or connectivity validation/);
+  assert.match(modelOptions({ model, modelRegistry: { getAvailable: () => [] } }), /none/);
+  const manyProviders = Array.from({ length: 15 }, (_, index) => ({ provider: `available-${index}`, id: 'model' }));
+  const largeInventory = modelOptions({ model, modelRegistry: { getAvailable: () => manyProviders } });
+  for (const item of manyProviders) assert(largeInventory.split(/[\s,]+/).includes(`${item.provider}/${item.id}`));
+  assert(!largeInventory.includes(`${model.provider}/${model.id}`), 'Unavailable current model must not be advertised');
   const spawn = args => tools.get('subagent').execute('fixture', args, undefined, undefined, parentCtx);
   await assert.rejects(spawn({ agent: 'fixture', model: `${missing.provider}/${missing.id}`, task: 'never launched' }), /missing provider credentials/);
   await assert.rejects(spawn({ agent: 'unsupported', task: 'never launched' }), /absent\/model/);

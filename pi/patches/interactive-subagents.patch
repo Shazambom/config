@@ -133,14 +133,14 @@ index 0000000..09abb30
 +
 +export function modelOptions(ctx: ModelContext): string {
 +  const models = ctx.modelRegistry.getAvailable();
-+  const examples = new Map<string, string>();
-+  if (ctx.model && models.some(m => modelName(m) === modelName(ctx.model!))) {
-+    examples.set(ctx.model.provider, modelName(ctx.model));
-+  }
++  const providers = new Map<string, string[]>();
 +  for (const model of models) {
-+    if (!examples.has(model.provider)) examples.set(model.provider, modelName(model));
++    const names = providers.get(model.provider) ?? [];
++    names.push(modelName(model));
++    providers.set(model.provider, names);
 +  }
-+  return `Models with configured credentials in the parent runtime: ${[...examples.values()].slice(0, 12).join(", ") || "none"}. ` +
++  const options = [...providers].map(([provider, names]) => `- ${provider}: ${names.join(", ")}`).join("\n");
++  return `Models with configured credentials in the parent runtime:\n${options || "none"}\n` +
 +    "These are credential-presence checks, not token or connectivity validation. Child credentials and provider extensions must also be available in its sandbox.";
 +}
 +

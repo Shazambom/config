@@ -512,7 +512,10 @@ override, then a profile pin, then the parent's active provider/model. Project
 `.pi/agents/*.md` overrides global roles.
 
 Before spawning, the orchestrator checks authenticated-provider information from
-`subagents_list` and chooses a model for the task. Catalogue membership alone does
+`subagents_list` and chooses a model for the task. The tool lists every
+credential-backed model, grouped by provider, using full `provider/model` IDs.
+Models sharing one provider remain separate choices; an arena can select different
+models without needing different provider logins. Catalogue membership alone does
 not mean the provider is authenticated. The guard uses Pi's model/auth registry,
 not a Codex-specific allowlist, so multiple OAuth subscriptions, API keys,
 environment credentials, and registered custom providers can coexist.
@@ -526,8 +529,10 @@ treated as missing credentials. A credential override or provider extension load
 only in the parent may be absent from a restricted child. The child checks its own
 runtime too; the guard never copies secrets into commands or widens its tool sandbox.
 
-`bash pi/test-subagent-provider.sh` exercises selection and failure handling with
-synthetic credentials and provider responses, without paid model calls.
+`bash pi/test-subagent-provider.sh` exercises the actual discovery tool, selection,
+and failure handling with synthetic credentials and provider responses, without
+paid model calls. It checks that same-provider models are not hidden and that
+credential-less providers are excluded.
 `bash pi/test-extensions.sh` also launches a real child in a private tmux server,
 holds its loopback provider response until its running process is identified,
 then returns HTTP 401. It asserts a sanitized parent error, one provider request,
