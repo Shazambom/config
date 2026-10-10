@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -107,6 +108,31 @@ try {
   const root = await makeSession('root');
   const receipts = [];
   root.api.events.on('team:receipt', message => receipts.push(message));
+  // An actual orchestrator tool call must report an empty broadcast, without
+  // writing a self-mirrored message or consuming the successful-send budget.
+  const registered = store.state().members;
+  const exited = spawnSync(process.execPath, ['-e', '']);
+  assert.equal(exited.status, 0);
+  await root.session.prompt('/team on');
+  for (const [label, inactive] of [
+    ['empty', {}],
+    ['completed', { a: { ...registered.a, live: false } }],
+    ['stale', { a: { ...registered.a, live: true, pid: process.pid, processIdentity: 'not-this-process-incarnation' } }],
+    ['dead', { a: { ...registered.a, live: true, pid: exited.pid, processIdentity: 'gone' } }],
+    ['dead-unknown-identity', { a: { ...registered.a, live: true, pid: exited.pid } }],
+  ]) {
+    await store.transaction(state => { state.members = { root: state.members.root, ...inactive }; });
+    const before = store.messages().length;
+    scripts.set('root', [{ to: '#team', message: `UNDELIVERABLE_${label}` }]);
+    await root.session.prompt(`broadcast with ${label} team`);
+    const result = root.session.messages.filter(message => message.role === 'toolResult' && message.toolName === 'team_send').at(-1);
+    assert.equal(result?.isError, true, `${label} broadcast must not claim success`);
+    assert.match(JSON.stringify(result.content), /No active recipients; message not delivered/);
+    assert(JSON.stringify(captures.get('root').at(-1).messages).includes('No active recipients; message not delivered'), 'The orchestrator must receive the response');
+    assert.equal(store.messages().length, before, 'Undelivered broadcasts must not enter message history');
+  }
+  await store.transaction(state => { state.members = registered; });
+  await root.session.prompt('/team off');
   const a = await makeSession('a');
   const b = await makeSession('b');
   assert(!root.api.getActiveTools().includes('team_send'));

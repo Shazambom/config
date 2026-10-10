@@ -575,6 +575,11 @@ busy recipients receive native steering at their next safe turn boundary. Notifi
 are visible in the recipient transcript. Recipients should respond when useful, not
 automatically echo or acknowledge each notification.
 
+A broadcast with no active recipients returns an immediate tool error:
+`No active recipients; message not delivered.` The sender does not count as a
+listener, even when it is the root orchestrator. Completed or stale processes do not receive broadcasts,
+and an undeliverable broadcast does not enter the message log or consume send quota.
+
 Replies use `reply_to`; optional `wait_for_reply` keeps a question's sender alive
 for up to 60 seconds. An unrelated incoming message interrupts that tool wait so
 the agent can handle it. The original question remains pending until its answer,

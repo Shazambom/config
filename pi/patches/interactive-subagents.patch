@@ -599,7 +599,7 @@ new file mode 100644
 index 0000000..0331c9c
 --- /dev/null
 +++ b/pi-extension/subagents/team.ts
-@@ -0,0 +1,212 @@
+@@ -0,0 +1,213 @@
 +import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 +import { join } from "node:path";
 +import { homedir } from "node:os";
@@ -723,7 +723,8 @@ index 0000000..0331c9c
 +      let targets: Member[];
 +      if (args.to === "#team") {
 +        if (args.wait_for_reply || args.reply_to) throw new Error("Broadcasts cannot wait for or reference a reply.");
-+        targets = members.filter(m => m.live && m.id !== sender);
++        targets = members.filter(m => m.live && m.id !== sender && (!m.pid || (!!m.processIdentity && processIdentity(m.pid) === m.processIdentity)));
++        if (!targets.length) throw new Error("No active recipients; message not delivered. Team messages do not resume completed subagents.");
 +      } else {
 +        targets = args.to === "parent" ? members.filter(m => m.id === (from.parent ?? "root"))
 +          : members.filter(m => m.id === args.to || m.name === args.to);

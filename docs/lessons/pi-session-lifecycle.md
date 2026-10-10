@@ -75,6 +75,25 @@ References under `pi/tests/lifecycle-team/`: `reload.mjs`,
 `root-replacement.sh`, `resumed-name.mjs`, and the actual child-reload scenario
 in `worker-root.mjs`.
 
+## Empty broadcasts must report no listeners
+
+Team broadcasts appended the root audit copy even when no other member could
+receive them, and the tool returned "Sent". Count eligible recipients before adding
+that copy. Check live state and process identity, exclude the sender, and reject an
+empty broadcast before appending it or consuming send quota. For a recorded PID,
+require a known identity: two missing identities must not make a dead process count
+as a listener. Independent review caught that case; its regression failed before
+the identity-presence guard and passed afterward.
+This is a tool error, not a peer acknowledgement, retry, or new agent turn.
+
+`pi/tests/team-fixture.mjs` drives actual SDK orchestrator tool calls for empty,
+completed, stale-identity, and exited-process teams. Assert that the next model
+request receives the no-recipient response and the message log stays unchanged.
+Use a real exited process for the dead-PID case; an out-of-range PID only tests an
+OS argument error. Existing live peer and root delivery checks must still pass.
+Run `bash pi/test-team.sh`; implementation lives in
+`pi/patches/interactive-subagents.patch`.
+
 ## Fence the first shared mutation, not only launch
 
 Arena changed team generation before its worker launch checked ownership. A later
