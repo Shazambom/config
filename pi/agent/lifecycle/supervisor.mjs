@@ -5,6 +5,10 @@ import { createServer } from 'node:net';
 
 const exec = promisify(execFile);
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+const TERMINAL_QUERY_TIMEOUT_MS = 1000;
+const TERMINAL_WARNING_AFTER = 3;
+const TERMINAL_POLL_MS = 250;
+const TERMINAL_RETRY_MS = 1000;
 let lease;
 const send = value => { if (process.connected) process.send(value, () => {}); };
 const failure = error => send({ type: 'failure', code: error.code ?? 'SUPERVISOR_QUERY', sqlite: error.errcode, name: error.name, stack: error.stack?.split('\n').slice(1).join('\n') });
@@ -58,24 +62,41 @@ async function listenOwner(pid, started) {
   return endpoint.address().port;
 }
 async function monitor(pid, terminal, started) {
-  const tmux = async (...args) => (await exec('tmux', ['-S', terminal.socket, ...args], { timeout: 1000 })).stdout.trim().split('\n');
+  const tmux = async (...args) => (await exec('tmux', ['-S', terminal.socket, ...args], { timeout: TERMINAL_QUERY_TIMEOUT_MS })).stdout.trim().split('\n');
+  let failures = 0;
+  const report = (available, code) => send({ type: 'terminal-monitor', available, code,
+    sessionFile: lease.sessionFile, generation: lease.generation });
   try {
     while (!closing) {
-      // Enumerate all sessions containing this pane, including linked windows.
-      // A client viewing another window in a relevant session still owns it.
-      const panes = await tmux('list-panes', '-a', '-F', '#{pane_id}\t#{session_attached}');
-      const counts = panes.filter(row => row.split('\t')[0] === terminal.pane).map(row => {
-        const count = row.split('\t')[1];
-        if (!/^\d+$/.test(count ?? '') || !Number.isSafeInteger(Number(count))) {
-          throw Object.assign(new Error(), { code: 'TMUX_CLIENT_COUNT_INVALID' });
-        }
-        return Number(count);
-      });
+      // Query uncertainty is not ownership loss or proof of terminal detachment.
+      let counts;
+      try {
+        const panes = await tmux('list-panes', '-a', '-F', '#{pane_id}\t#{session_attached}');
+        counts = panes.flatMap(row => {
+          const [pane, count, ...extra] = row.split('\t');
+          if (!/^%\d+$/.test(pane) || !/^\d+$/.test(count ?? '') || !Number.isSafeInteger(Number(count)) || extra.length) {
+            throw Object.assign(new Error(), { code: 'TMUX_CLIENT_COUNT_INVALID' });
+          }
+          return pane === terminal.pane ? [Number(count)] : [];
+        });
+      } catch (error) {
+        if (closing) return;
+        lease.assertOwned();
+        const timedOut = error.code == null && error.killed === true && error.signal === 'SIGTERM';
+        const code = error.code === 'TMUX_CLIENT_COUNT_INVALID' ? error.code : timedOut ? 'TMUX_QUERY_TIMEOUT' : 'TMUX_QUERY_FAILED';
+        if (++failures === TERMINAL_WARNING_AFTER) report(false, code);
+        await pause(failures >= TERMINAL_WARNING_AFTER ? TERMINAL_RETRY_MS : TERMINAL_POLL_MS);
+        continue;
+      }
+      if (closing) return;
+      lease.assertOwned();
+      if (failures >= TERMINAL_WARNING_AFTER) report(true);
+      failures = 0;
       if (!counts.some(count => count > 0)) {
         await stopRoot(pid, started, 'last relevant terminal client detached');
         return;
       }
-      await pause(250);
+      await pause(TERMINAL_POLL_MS);
     }
   } catch (error) { if (!closing) failure(error); }
 }

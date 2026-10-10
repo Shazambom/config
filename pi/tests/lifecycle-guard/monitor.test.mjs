@@ -21,7 +21,7 @@ function finish(result) {
   child.send({ type: 'release' }, () => {});
 }
 child.on('message', message => {
-  if (message.type === 'owned') timer = setTimeout(() => finish({ type: 'alive' }), 400);
+  if (message.type === 'owned') timer = setTimeout(() => finish({ type: 'alive' }), Number(process.env.MONITOR_ALIVE_MS ?? 400));
   else finish(message);
 });
 child.on('exit', () => process.exit(finished ? 0 : 2));
@@ -33,8 +33,11 @@ setTimeout(() => { child.kill('SIGKILL'); process.exitCode = 2; }, 5000).unref()
 for (const [name, output, commandExit, expected] of [
   ['linked session still attached', '%1\t0\n%1\t2\n%2\t1\n', 0, 'alive'],
   ['only unrelated session attached', '%1\t0\n%2\t1\n', 0, 'stop'],
-  ['malformed attached count', '%1\tunknown\n', 0, 'failure'],
-  ['query failed', '', 7, 'failure'],
+  ['valid complete enumeration confirms target pane is gone', '%2\t1\n', 0, 'stop'],
+  ['malformed attached count', '%1\tunknown\n', 0, 'terminal-monitor'],
+  ['empty reply is not confirmed terminal loss', '', 0, 'terminal-monitor'],
+  ['malformed unrelated row is uncertain', 'unexpected output\n', 0, 'terminal-monitor'],
+  ['query failed', '', 7, 'terminal-monitor'],
 ]) {
   test(name, { timeout: 10000 }, async () => {
     const root = await mkdtemp(join(tmpdir(), 'pi-monitor-'));
@@ -44,7 +47,7 @@ for (const [name, output, commandExit, expected] of [
     await writeFile(join(root, 'bin/tmux'), `#!/bin/sh\ncat "$MONITOR_OUTPUT"\nexit ${commandExit}\n`, { mode: 0o700 });
     const child = fork(join(root, 'root.mjs'), [supervisor, join(root, 'session.jsonl')], {
       cwd: root,
-      env: { ...process.env, PATH: `${join(root, 'bin')}:${process.env.PATH}`, MONITOR_OUTPUT: join(root, 'output') },
+      env: { ...process.env, PATH: `${join(root, 'bin')}:${process.env.PATH}`, MONITOR_OUTPUT: join(root, 'output'), MONITOR_ALIVE_MS: expected === 'alive' ? '400' : '4000' },
       stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
     });
     const messages = [];
@@ -58,6 +61,10 @@ for (const [name, output, commandExit, expected] of [
     assert.deepEqual(outcome, { code: 0, signal: null }, errors);
     assert.equal(messages.length, 1);
     assert.equal(messages[0].type, expected);
+    if (expected === 'terminal-monitor') {
+      assert.equal(messages[0].available, false);
+      assert.equal(messages[0].code, commandExit ? 'TMUX_QUERY_FAILED' : 'TMUX_CLIENT_COUNT_INVALID');
+    }
     await writeFile(join(root, 'result.json'), JSON.stringify({ name, outcome, messages }));
     console.log(`Monitor proof: ${root}`);
   });

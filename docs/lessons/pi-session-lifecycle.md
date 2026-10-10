@@ -139,6 +139,47 @@ received by the client; a requested sleep duration is not an elapsed measurement
 References: `pi/tests/lifecycle-guard/owner-client.test.mjs` and
 `pi/tests/lifecycle-guard/worker-owner.test.mjs`.
 
+## Terminal-query failure is not ownership loss
+
+Two live sessions reported `SUPERVISOR_QUERY` at the same second. Read-only owner
+probes still verified both writer leases, and tmux queries succeeded afterward.
+The old monitor's outer catch permanently stopped polling. A private subprocess
+timeout reproduced the diagnostic's generic code and empty sanitized stack, but
+the historical trigger could not be proved because query details were discarded.
+
+Keep terminal observability separate from the writer lease. Retain admission and
+retry deadline-bounded queries with a capped delay. After sustained failures, send
+one generation-fenced temporary status; after a complete valid reply, verify the
+held lease and clear it. Failed, empty, or malformed queries never authorize root
+signals. Real helper/lease failures remain failures. Do not automatically clear
+those failures just because a later terminal-status message arrives.
+
+Distinguish an uncertain reply from confirmed absence. The installed tmux manual
+specifies that `list-panes -a` lists all server panes. A successful, nonempty,
+fully validated reply containing only other panes establishes that the monitored
+pane is gone. Keep orphan shutdown in this case. Independent review initially
+flagged it, then withdrew the finding after checking that contract; a dedicated
+regression now records the distinction.
+
+`monitor-retry.test.mjs` exercises real helper IPC, repeated blips, longer timeout
+and command-error outages, lease retention, autonomous recovery, and confirmed
+terminal-loss shutdown. `monitor-status.test.mjs` checks the actual extension IPC
+receiver, continued admission, warning restoration on reload, stale generations,
+and separation from genuine ownership failures. `monitor.test.mjs` covers linked
+clients and malformed/empty replies. These live under `pi/tests/lifecycle-guard/`.
+`monitor-recovery-runtime.sh` verifies the actual installed CLI using a private
+tmux-query override: real tasks before/during/after an outage, visible warning and
+automatic clearance, unchanged helper PID and generation, and terminal-loss
+shutdown afterward. Its optional argument selects the deployed guard path.
+Wait for asynchronous diagnostic writes before asserting their UI warning; a
+single event-loop tick is not a completion guarantee.
+
+Old helpers already loaded in running sessions do not gain new code from deployment.
+Do not signal or restart them without approval. The previously failed state remains
+sticky; recovering those existing runtimes is separate from making new monitors
+self-recovering. Independent subagent review can itself be blocked by that failed
+admission state; do not bypass the protection to obtain a review.
+
 ## Keep feedback fast and check the test apparatus
 
 Run one failing case first, then the smallest fix and related controls. Reserve

@@ -125,6 +125,16 @@ holder apply throughout, including automatic verified-dead-owner recovery.
 - The supervisor counts clients in every tmux session containing the pane,
   including linked windows. Window selection is not detachment; unrelated
   sessions on the same server do not keep the root alive.
+- Terminal-query failures do not revoke a held writer lease. Queries have deadlines;
+  the helper retries with a capped delay and shows a temporary warning after a
+  sustained outage. It continues checking until a valid reply verifies terminal
+  state, then rechecks the lease and clears the warning automatically. A successful,
+  nonempty, fully validated enumeration that omits the monitored pane confirms that
+  the pane is gone. Empty or malformed replies are uncertainty, not permission to
+  kill a root. Admission and
+  ordinary work remain available while the lease is held. Real lease/helper failures
+  still follow the ownership-failure path. No investigation turn is injected for a
+  recoverable terminal outage.
 - Last-client loss requests graceful shutdown, then checks the direct parent's
   start identity and inherited IPC connection before bounded TERM/KILL attempts.
   There are no process-group or process-name signals.

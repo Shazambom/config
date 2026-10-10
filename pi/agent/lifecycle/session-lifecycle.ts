@@ -15,7 +15,7 @@ export type SessionLifecycleAdmission =
   | { readonly managed: true; readonly status: 'unprotected'; readonly reason: string; readonly diagnostic?: string };
 export interface SessionLifecycleAdmissionRequest { respond: (admission: SessionLifecycleAdmission) => void }
 type DeferredStartup = { sessionFile: string; generation: string; complete?: () => void; input?: { text: string; images?: InputEvent['images'] } };
-type State = { freshCommand?: ReturnType<typeof setImmediate>; deferredStartup?: DeferredStartup; awaitingFresh?: boolean; switching?: { file: string; generation: string; shutdown: boolean }; file?: string; canonicalFile?: string; generation?: string; child?: ChildProcess; mode: 'pending' | 'owned' | 'conflict' | 'stopping' | 'failed' | 'stateless'; diagnostic?: string; failure?: string; investigated?: boolean; onMessage?: (message: any) => Promise<void> };
+type State = { terminalWarning?: string; freshCommand?: ReturnType<typeof setImmediate>; deferredStartup?: DeferredStartup; awaitingFresh?: boolean; switching?: { file: string; generation: string; shutdown: boolean }; file?: string; canonicalFile?: string; generation?: string; child?: ChildProcess; mode: 'pending' | 'owned' | 'conflict' | 'stopping' | 'failed' | 'stateless'; diagnostic?: string; failure?: string; investigated?: boolean; onMessage?: (message: any) => Promise<void> };
 const globals = globalThis as typeof globalThis & { [key]?: State };
 
 const INIT_DEADLINE_MS = 2000;
@@ -91,6 +91,15 @@ export default function sessionLifecycle(pi: ExtensionAPI) {
     ctx.ui.setWidget('session-lifecycle', [WARNING, state.diagnostic ?? state.failure ?? 'Diagnostic unavailable']);
     ctx.ui.setStatus('session-lifecycle', WARNING);
   }
+  function terminalStatus(ctx: ExtensionContext, recovered = false) {
+    if (!ctx.hasUI) {
+      if (state.terminalWarning) console.error(state.terminalWarning);
+      else if (recovered) console.error('Terminal monitoring recovered.');
+      return;
+    }
+    ctx.ui.setWidget('session-terminal-monitor', state.terminalWarning ? [state.terminalWarning] : undefined);
+    ctx.ui.setStatus('session-terminal-monitor', state.terminalWarning);
+  }
   function investigate(ctx: ExtensionContext) {
     if (ctx.mode !== 'tui' || state.investigated) return;
     const runtime = state.onMessage;
@@ -104,6 +113,7 @@ export default function sessionLifecycle(pi: ExtensionAPI) {
   async function fail(ctx: ExtensionContext, error: any, agentDir: string, inject = true) {
     discardStartup();
     state.mode = 'failed';
+    if (state.terminalWarning) { state.terminalWarning = undefined; terminalStatus(ctx); }
     // Deliberately omit error.message, environment, prompts, and session contents.
     const safe = {
       code: /^[A-Z_]{2,40}$/.test(error.code ?? '') ? error.code : 'GUARD_INIT',
@@ -167,6 +177,12 @@ export default function sessionLifecycle(pi: ExtensionAPI) {
     const file = ctx.sessionManager.getSessionFile();
     const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent');
     state.onMessage = async message => {
+      if (message.type === 'terminal-monitor' && (state.mode === 'owned' || (state.mode === 'pending' && state.awaitingFresh)) &&
+        message.sessionFile === state.canonicalFile && message.generation === state.generation && typeof message.available === 'boolean') {
+        const code = ['TMUX_QUERY_TIMEOUT', 'TMUX_QUERY_FAILED', 'TMUX_CLIENT_COUNT_INVALID'].includes(message.code) ? message.code : 'TMUX_QUERY_FAILED';
+        state.terminalWarning = message.available ? undefined : `Terminal monitoring unavailable (${code}). Writer lease retained; retrying automatically.`;
+        terminalStatus(ctx, message.available);
+      }
       if (message.type === 'stop') { discardStartup(); state.mode = 'stopping'; ctx.abort(); ctx.shutdown(); }
       if (message.type === 'failure' && state.mode !== 'failed') {
         if (workerOwner !== undefined) { discardStartup(); state.mode = 'stopping'; ctx.abort(); ctx.shutdown(); }
@@ -185,12 +201,14 @@ export default function sessionLifecycle(pi: ExtensionAPI) {
         state.mode = 'owned';
       }
       state.file = file;
+      if (state.terminalWarning) terminalStatus(ctx);
       if (state.awaitingFresh && !state.switching) queueFreshCommand();
       return;
     }
     if (state.mode === 'failed') { warning(ctx); investigate(ctx); return; }
     state.file = file;
     state.mode = 'pending';
+    if (state.terminalWarning) { state.terminalWarning = undefined; terminalStatus(ctx); }
     try {
       if (state.child) await release(state);
       if (!file && workerOwner === undefined) {
