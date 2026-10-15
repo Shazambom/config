@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: Review a diff, PR, branch, path, or revision range for correctness bugs and concrete reuse, simplification, efficiency, altitude, and conventions issues. Supports explicit effort levels, optional safe fixes, and authorized inline PR comments.
+description: Review a diff, PR, branch, path, or revision range for correctness bugs and concrete reuse, simplification, efficiency, altitude, CLAUDE.md compliance, and conventions issues. Supports explicit effort levels, optional safe fixes, and authorized inline PR comments.
 ---
 
 # Code review
@@ -18,7 +18,7 @@ Default to **medium on every new invocation**. Never remember a previous effort,
 Resolve reference paths relative to this SKILL.md. Read [levels](references/levels.md), [scope](references/scope.md), [angles](references/angles.md), and [actions and output](references/actions.md) before reviewing. [Origin](references/origin.md) records the source and limits, not additional runtime instructions.
 
 1. Resolve the level and target. Gather a read-only diff using the scope rules. Identify which revision each source excerpt belongs to.
-2. For low, do the single hunk-only pass and stop investigating. For other levels, read changed source and enclosing functions before requesting extra context, then run all required finder angles independently.
+2. For low, do the single hunk-only pass and stop investigating. For other levels, read changed source and enclosing functions before requesting extra context, then run all required finder angles independently, including the dedicated CLAUDE.md compliance finder at medium and above.
 3. Pool candidates. Deduplicate the same defect mechanism, retaining the clearest scenario and all useful evidence. Same line does not mean same bug; distinct mechanisms on one line remain separate.
 4. Except at low, give each deduplicated candidate to one fresh verifier. Retain CONFIRMED and PLAUSIBLE; drop REFUTED. At xhigh/max, run the gap sweep and verify every new deduplicated candidate too.
 5. Rank correctness ahead of cleanup, altitude, and conventions, then by impact and evidence. Apply the output cap only after verification. All counts are ceilings, never quotas; an empty report is valid.

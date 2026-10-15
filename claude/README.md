@@ -7,8 +7,9 @@ stay intact. To opt into a bundled update, move that global command or skill
 aside and rerun init. Setup does not synchronize edits back into this repository.
 Exact known Markdown, plain-text, and prior Go versions of `design` are archived
 outside skill discovery before seeding the updated skill; customized directories remain untouched.
-The exact initial `code-review` bundle also receives a private backup before its
-update. Setup preserves customized review skills and commands.
+Exact recognized `code-review` bundles also receive a private backup before their
+update. Setup checks every bundled file and preserves customized review skills,
+extra files, symlinks, and commands.
 
 ## Sources
 
@@ -25,8 +26,12 @@ update. Setup preserves customized review skills and commands.
   other than the three listed above came from Scheduler.
 - Claude Code built-ins: `simplify`, transcribed from the CLI's bundled skill
   text, and `code-review`, adapted from the supplied internal prompt extraction.
-  `/code-review` defaults to medium: eight independent finder angles, up to six
+  `/code-review` defaults to medium: nine independent finder angles, up to six
   candidates each, one verifier per candidate, and at most eight findings.
+  Medium and above include a dedicated CLAUDE.md compliance finder. It freshly
+  reads governing repo instructions, checks architecture and code placement,
+  respects documented exceptions, and cites the rule behind each recommendation.
+  Low remains diff-only. Architectural moves still require explicit approval.
   Levels `low`, `high`, `xhigh`, and `max` adjust coverage and caps. `--fix`
   authorizes safe local fixes; `--comment` authorizes inline comments on an
   explicitly identified PR. Without those flags, review is read-only.

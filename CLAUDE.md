@@ -106,6 +106,8 @@ retire disproven advice rather than accumulating contradictions. Keep general
 rules here and feature details in the linked record.
 
 Feature index:
+- [Code review](docs/lessons/code-review.md): instruction-based architecture review,
+  scoped exceptions, level coverage, and safe skill migrations.
 - [Pi subagent models](docs/lessons/pi-subagent-models.md): complete credential-backed
   model discovery, provider grouping, and inference verification limits.
 - [Pi Command shortcuts](docs/lessons/pi-command-shortcuts.md): fullscreen

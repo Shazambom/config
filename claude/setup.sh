@@ -130,7 +130,7 @@ migrate_bundled_timeline
 
 migrate_bundled_code_review() {
   local target="$destination/skills/code-review" backup version
-  local expected current relative digest entry count=0
+  local expected current latest relative digest entry count=0
   local -a hash_command
   [[ ! -L "$destination" && ! -L "$destination/skills" && -d "$target" && ! -L "$target" ]] || return 0
   [[ -f "$target/SKILL.md" && ! -L "$target/SKILL.md" && -f "$source_root/skills/code-review/SKILL.md" ]] || return 0
@@ -141,6 +141,7 @@ migrate_bundled_code_review() {
   case "${digest%% *}" in
     2d76f548e597936f4d8bb9a78e91e86f320bedec676722190593d60218ea1965) version=seed-v1 ;;
     f7136d7e31e53cde8f1bf0cc0583031ad967855e89616c0c515049c0d48a788a) version=final-report-v1 ;;
+    5f706500a9a1fd8ee09fe6007f865b91dc90d05e658920cdbcd6b14e5240e59c) version=final-report-v2 ;;
     *) return 0 ;;
   esac
   backup="$destination/code-review-skill-backup-$version"
@@ -150,18 +151,21 @@ migrate_bundled_code_review() {
     count=$((count + 1))
   done < <(find "$target" -mindepth 1 -print0)
   [[ "$count" == 7 ]] || return 0
-  while read -r expected current relative; do
-    [[ "$version" != final-report-v1 ]] || expected="$current"
+  while read -r expected current latest relative; do
+    case "$version" in
+      final-report-v1) expected="$current" ;;
+      final-report-v2) expected="$latest" ;;
+    esac
     [[ -f "$target/$relative" ]] || return 0
     digest="$("${hash_command[@]}" < "$target/$relative")" || return 0
     [[ "${digest%% *}" == "$expected" ]] || return 0
   done <<'CODE_REVIEW_SEED'
-2d76f548e597936f4d8bb9a78e91e86f320bedec676722190593d60218ea1965 f7136d7e31e53cde8f1bf0cc0583031ad967855e89616c0c515049c0d48a788a SKILL.md
-9f4227c445e90f344c521a1605a0551e1c195fa60c585ea3e8829e2a838de5a2 fb86fbda52c232436c0ef2618716b6ee06acb6d0803711ac7aa004bf2b655cf4 references/actions.md
-fea96bf5e2fe946abade0cfd18f9be59153d4fe5e017ec8631937e701b4cf48c fea96bf5e2fe946abade0cfd18f9be59153d4fe5e017ec8631937e701b4cf48c references/angles.md
-03f0047f732cf83cda10f51532a473d6882f68edfacfb3fdbac8f82b5d8de523 00879d045e77a0292f079a178daa834c6bb0cd3580294115bc09d1ae8cb4d41b references/levels.md
-269a3f84a58def88053a8bd5e21ee4fa1c10e2b0f61ca594fa2f218a3f2170aa 269a3f84a58def88053a8bd5e21ee4fa1c10e2b0f61ca594fa2f218a3f2170aa references/origin.md
-6f1e90fb521f9f1aaeaa5c0e379efb0dd4834dcde0ba782fe18da41fa1d8c556 6f1e90fb521f9f1aaeaa5c0e379efb0dd4834dcde0ba782fe18da41fa1d8c556 references/scope.md
+2d76f548e597936f4d8bb9a78e91e86f320bedec676722190593d60218ea1965 f7136d7e31e53cde8f1bf0cc0583031ad967855e89616c0c515049c0d48a788a 5f706500a9a1fd8ee09fe6007f865b91dc90d05e658920cdbcd6b14e5240e59c SKILL.md
+9f4227c445e90f344c521a1605a0551e1c195fa60c585ea3e8829e2a838de5a2 fb86fbda52c232436c0ef2618716b6ee06acb6d0803711ac7aa004bf2b655cf4 f82df320ac678076f81c6f1b5f01e0b3b0d057cc4f897528863db8df19b502f8 references/actions.md
+fea96bf5e2fe946abade0cfd18f9be59153d4fe5e017ec8631937e701b4cf48c fea96bf5e2fe946abade0cfd18f9be59153d4fe5e017ec8631937e701b4cf48c fea96bf5e2fe946abade0cfd18f9be59153d4fe5e017ec8631937e701b4cf48c references/angles.md
+03f0047f732cf83cda10f51532a473d6882f68edfacfb3fdbac8f82b5d8de523 00879d045e77a0292f079a178daa834c6bb0cd3580294115bc09d1ae8cb4d41b d777c01f64f2c3d002622eac5077136891fcc6037194aa44256f334ba7a3d528 references/levels.md
+269a3f84a58def88053a8bd5e21ee4fa1c10e2b0f61ca594fa2f218a3f2170aa 269a3f84a58def88053a8bd5e21ee4fa1c10e2b0f61ca594fa2f218a3f2170aa 269a3f84a58def88053a8bd5e21ee4fa1c10e2b0f61ca594fa2f218a3f2170aa references/origin.md
+6f1e90fb521f9f1aaeaa5c0e379efb0dd4834dcde0ba782fe18da41fa1d8c556 6f1e90fb521f9f1aaeaa5c0e379efb0dd4834dcde0ba782fe18da41fa1d8c556 6f1e90fb521f9f1aaeaa5c0e379efb0dd4834dcde0ba782fe18da41fa1d8c556 references/scope.md
 CODE_REVIEW_SEED
   diff -qr "$target" "$source_root/skills/code-review" >/dev/null && return 0
   mkdir -m 700 "$backup" || return 0

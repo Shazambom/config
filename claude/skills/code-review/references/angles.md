@@ -32,9 +32,19 @@ For retention claims, identify the actual captured value, reference chain, reach
 
 Check whether the change belongs at its current layer. A special case may hide a shared invariant, but generalization is not automatically better. Name the actual duplicated policy, bypassed invariant, fragility, or maintenance cost and the smallest appropriate correction. Apply KISS: keep a local fix when it solves the requirement cleanly. Do not recommend a generic abstraction or architecture expansion without evidence of cost.
 
+## CLAUDE.md compliance
+
+At medium and above, assign a dedicated independent finder to this angle. Freshly reread the repository's `CLAUDE.md` and any scoped `CLAUDE.md` files governing the changed paths. Do not rely on remembered instructions or another reviewer's summary. Use the instruction scope and revision rules in the scope reference, including higher-priority instructions, local overrides, and relevant linked architecture guidance.
+
+Extract the applicable architectural and organizational rules, then compare the changed code with them. Focus on layer and package ownership, inward/outward dependency rules, type and representation boundaries, file placement and co-location, ownership of lifecycle operations, and the prescribed homes for configuration and shared utilities. Use the repository's stated philosophy, not a preferred architecture imported from another project. No applicable `CLAUDE.md` means no CLAUDE-specific findings; record that coverage limit rather than inventing rules.
+
+For each candidate, quote the exact applicable rule with its file and line, identify the changed code that violates it, and explain the mismatch. For a placement issue, inspect the proposed destination or owning package before recommending the smallest justified relocation. Distinguish an explicit ownership rule from a general principle that needs concrete supporting evidence. Respect documented exceptions and any requirement to ask before creating packages or changing architecture.
+
+Stay within the reviewed change; read surrounding organization as context, not permission for a repository-wide cleanup. Recommend architectural moves, do not perform them. Return category `claude-compliance`. A compliant change may produce no findings. During aggregation, deduplicate overlapping altitude or conventions candidates by mechanism while preserving the governing rule and destination evidence.
+
 ## Conventions
 
-Read only the applicable instruction files described in the scope reference. Quote the exact rule, its path, and the exact changed code violating it. No inferred house style or vague appeals to the document's spirit. Rules apply only within their scope; resolve conflicting instructions by precedence. If no applicable rule is violated, return no candidates.
+Read only the applicable instruction files described in the scope reference. Focus on concrete non-architectural conventions such as naming, logging, comments, and generated-file rules; the dedicated CLAUDE.md compliance finder owns architecture and organization. Quote the exact rule, its path, and the exact changed code violating it. No inferred house style or vague appeals to the document's spirit. Rules apply only within their scope; resolve conflicting instructions by precedence. If no applicable rule is violated, return no candidates.
 
 ## D: Language and framework pitfalls
 

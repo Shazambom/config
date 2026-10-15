@@ -2,7 +2,7 @@
 
 ## Safe fixes
 
-`--fix` explicitly authorizes working-tree edits for safe, verified findings, including concrete cleanup. It does not authorize architecture changes, scope expansion, changed intent, staging, or committing. At levels with candidate verification, only fix CONFIRMED findings with a clear correction consistent with intended behavior. Skip PLAUSIBLE findings, behavior guesses, false positives, and changes needing a product decision; state why.
+`--fix` explicitly authorizes working-tree edits for safe, verified findings, including concrete cleanup. It does not authorize architecture changes, scope expansion, changed intent, staging, or committing. A CLAUDE.md compliance recommendation to move code across ownership or layer boundaries still needs explicit approval; a confirmed rule violation alone does not authorize that refactor. At levels with candidate verification, only fix CONFIRMED findings with a clear correction consistent with intended behavior. Skip PLAUSIBLE findings, behavior guesses, false positives, and changes needing a product decision; state why.
 
 Before editing, confirm the local source matches the reviewed target and preserve unrelated edits. If a PR or branch snapshot does not match local source, ask before applying anything. Do not checkout or reset to make it match. Low has no candidate verification pass. With `low --fix`, only apply self-evident, hunk-local corrections that need no broader source investigation. Do not invent a verifier verdict. Skip anything needing more context and request a higher-level review if needed. Validate applied fixes with targeted checks at every level.
 
@@ -37,7 +37,7 @@ Each finding includes:
 - `summary`: one-sentence claim.
 - `short_summary`: at most 60 characters, just the claim, no rationale or consequence clause.
 - `failure_scenario`: concrete inputs/state and wrong behavior, or concrete cleanup cost. Include relevant exact evidence quotes here if the tool has no verification-note field.
-- `category`: a short kebab-case slug such as `correctness`, `reuse`, `simplification`, `efficiency`, `altitude`, or `conventions`.
+- `category`: a short kebab-case slug such as `correctness`, `reuse`, `simplification`, `efficiency`, `altitude`, `claude-compliance`, or `conventions`.
 - `verdict`: CONFIRMED or PLAUSIBLE only when a candidate verification pass ran.
 - `verification_note`: evidence quotes, trigger, and remaining uncertainty when candidate verification ran and the output contract supports this field. Otherwise preserve that information in `failure_scenario`.
 

@@ -14,6 +14,9 @@ if [[ -z "$legacy" ]]; then
   done
 fi
 export HOME="$work/home"
+require_text() {
+  grep -Fq "$1" "$2" || { printf 'FAIL: missing %s in %s\n' "$1" "$2" >&2; return 1; }
+}
 source_skill="$repo/claude/skills/code-review"
 target="$HOME/.claude/skills/code-review"
 command_path="$HOME/.claude/commands/code-review.md"
@@ -26,6 +29,12 @@ for ref in levels scope angles actions origin; do
 done
 bash "$repo/claude/setup.sh"
 diff -qr "$source_skill" "$target"
+require_text '## CLAUDE.md compliance' "$target/references/angles.md"
+require_text '| medium | Nine independent angles |' "$target/references/levels.md"
+require_text '| high | Same nine angles |' "$target/references/levels.md"
+require_text '| xhigh | Eleven independent angles |' "$target/references/levels.md"
+require_text '| low | One diff-only pass |' "$target/references/levels.md"
+require_text 'claude-compliance' "$target/references/actions.md"
 printf '\nCustom review policy\n' >> "$target/SKILL.md"
 printf 'Custom command\n' > "$command_path"
 rm "$target/references/angles.md"
@@ -51,6 +60,7 @@ if [[ -n "$legacy" ]]; then
   if command -v shasum >/dev/null; then digest="$(shasum -a 256 < "$legacy/SKILL.md")"; else digest="$(sha256sum < "$legacy/SKILL.md")"; fi
   case "${digest%% *}" in
     f7136d7e31e53cde8f1bf0cc0583031ad967855e89616c0c515049c0d48a788a) version=final-report-v1 ;;
+    5f706500a9a1fd8ee09fe6007f865b91dc90d05e658920cdbcd6b14e5240e59c) version=final-report-v2 ;;
     2d76f548e597936f4d8bb9a78e91e86f320bedec676722190593d60218ea1965) version=seed-v1 ;;
     *) echo 'Unknown legacy fixture' >&2; exit 1 ;;
   esac

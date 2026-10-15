@@ -3,16 +3,16 @@
 | Level | Finder coverage | Candidates per angle | Candidate verification | Gap sweep | Final cap |
 | --- | --- | --- | --- | --- | --- |
 | low | One diff-only pass | No per-angle budget | None | None | 4 |
-| medium | Eight independent angles | Up to 6 | One fresh verifier per candidate | None | 8 |
-| high | Same eight angles | Up to 6 | One fresh verifier per candidate, recall-biased | None | 10 |
-| xhigh | Ten independent angles | Up to 8 | One fresh verifier per candidate | One fresh finder, up to 8 new candidates | 15 |
+| medium | Nine independent angles | Up to 6 | One fresh verifier per candidate | None | 8 |
+| high | Same nine angles | Up to 6 | One fresh verifier per candidate, recall-biased | None | 10 |
+| xhigh | Eleven independent angles | Up to 8 | One fresh verifier per candidate | One fresh finder, up to 8 new candidates | 15 |
 | max | Same as xhigh | Up to 8 | Same as xhigh | Same as xhigh | 15 |
 
 Every level also requires the fresh final report verification in SKILL.md after all reports return. This does not add finder angles or candidate budgets.
 
 Medium favors precision: findings should justify maintainer action. High, xhigh, and max favor recall: send concrete, partly uncertain mechanisms to verification rather than suppressing them. Do not inflate counts at any level.
 
-The eight angles are A line-by-line, B removed behavior, C caller/callee tracing, reuse, simplification, efficiency, altitude, and conventions. Xhigh/max add D language pitfalls and E wrapper delegation.
+The nine angles are A line-by-line, B removed behavior, C caller/callee tracing, reuse, simplification, efficiency, altitude, CLAUDE.md compliance, and conventions. Xhigh/max add D language pitfalls and E wrapper delegation.
 
 ## Low contract
 
@@ -22,13 +22,13 @@ Exclude test and fixture hunks, including `test/`, `tests/`, `spec/`, `__tests__
 
 ## Candidate contract
 
-Every candidate has `file`, `line`, `summary`, `failure_scenario`, and `category`. Use a source-relative filename and a real line in the identified revision. Record old-side location separately for deletions. A candidate must name a reachable failure mechanism or a concrete cleanup cost, not merely unease. No candidate-count minimum applies.
+Every candidate has `file`, `line`, `summary`, `failure_scenario`, and `category`. Use a source-relative filename and a real line in the identified revision. Record old-side location separately for deletions. A candidate must name a reachable failure mechanism, a cited instruction violation, or a concrete cleanup cost, not merely unease. No candidate-count minimum applies.
 
 ## Verifier contract
 
 Read the diff and relevant source before deciding. Return the candidate plus one verdict and a verification note with exact code quotes, source paths/lines, triggering inputs or state, and wrong behavior or concrete cost.
 
-- `CONFIRMED`: establish a reachable trigger and the wrong output, crash, rule violation, or concrete cost. Quote the responsible code. For conventions also quote the applicable rule exactly.
+- `CONFIRMED`: establish a reachable trigger and the wrong output, crash, rule violation, or concrete cost. Quote the responsible code. For conventions and CLAUDE.md compliance, also quote the applicable rule exactly and verify its scope, revision, and documented exceptions. For proposed relocation, verify that the destination matches the stated ownership rule.
 - `PLAUSIBLE`: the mechanism is real but its trigger, runtime environment, or impact remains uncertain. Quote supporting code, state the uncertainty, and name the evidence or test that would confirm it. Do not describe it as proven.
 - `REFUTED`: quote the guard, invariant, type, or actual code that disproves it. Pure style with no observable effect or concrete cost also does not qualify.
 
