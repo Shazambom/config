@@ -75,6 +75,11 @@ pi_patch_completion() {
       previous=01f5961df23a0caf5b26fd7f03072f1fb2cb9d5c3ab5587ed88e9a73d9506690
       deferred=f8a3fb47a56130b62b0c2ca0be6290276ca833a2c6ab1e8f6aa575fbdf1cac75
       patched=692bac8865aff28b246a7f91c064be13ccee2d90a9ac1e8faff481554cc7b927 ;;
+    1.0.4)
+      original=fde684babdeae2c1def1b3f7bb31ba8f7fcc7e4a0e038fd146b63f8f5be274b7
+      previous=7f1876c9931b3063bc1c1d0afe762db6c9b3d0bee2926c05e6015d8541937a25
+      deferred=1eef2f12363e3137eaa358307ec8943b333dd48b196a77cc1338b7348a40141b
+      patched=407110f0f1cf216832f494200b5ae9ad295e582ef7f8f0a1b89f1dc5bf124f8e ;;
     *) echo "Unrecognized pi-tui $version; autocomplete patch not applied: $package" >&2; return 1 ;;
   esac
   if [[ "$policy" == pinned && "$version" != 0.85.1 ]]; then
@@ -104,6 +109,13 @@ pi_patch_completion_bundle() {
       deferred=a556403f07e83482e6ec7b6edd4b7b1b881c7e2de7a6b1649618302a495b3726
       patched=1ba7ad08cbad8e2dc597fc2b9dc6263dd2a4d18761b0176bf214bdfd7e52b848
       with_width=11474157714a8ac77e2cfc4ea3b77f3c05d37cf3406936dd6137b7d733c829fc ;;
+    1.0.4)
+      chunk=chunk-64GOPQSC.js
+      original=377fe53ebc07e7fd61b1ad3f61680db761b6141ce4eb7879eca8a3f0e928f6e3
+      previous=d0713a5130329acf48a2bba05f8ad66e7642013684678a425854df340fb710f4
+      deferred=add402ba4a738ea22f60a84fc02063ea3c72b66579ddc124895ad9a948bfb053
+      patched=37acc8508d5daf27dd5f934cf7996383dc9a58d09ab89d93c81cc89c74c291de
+      with_width='' ;;
     *) echo "Unrecognized Pi bundle $version; autocomplete patch not applied: $package" >&2; return 1 ;;
   esac
   if [[ "$policy" == pinned && "$version" != 0.85.1 ]]; then

@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: standalone-hq
+expected_outcome: |
+  Routes standalone HQ to service_name="Flossy HQ", then logfmt and parsed app_name="unified-hq" and app_environment="production", not indexed app_name or JSON parsing.
+  Refresh datasource and both app and service_name inventories before log retrieval. Show the routing decision and treat all calls as proposed.

@@ -173,7 +173,10 @@ See [`claude/README.md`](../claude/README.md) for provenance and limitations.
 Agents resolve named instructions with the read-only `load_workflow` tool. It
 uses Pi's native command index, not a directory-name convention. `/tdd` resolves
 the existing prompt at `~/.claude/commands/tdd.md`; `/skill:how` resolves the
-registered skill. Bare names must be unambiguous, or the caller specifies `kind`.
+registered skill. In `load_workflow`, `/name` selects a prompt first, then a
+skill; an explicit `kind` selects either one. Bare names must be unambiguous,
+or the caller specifies `kind`. This lookup rule does not add native skill
+command aliases: use `/skill:name` to inline a skill directly in user input.
 The result includes the exact source path and full unchanged contents. Missing
 and ambiguous names return errors instead of triggering a folder search.
 

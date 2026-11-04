@@ -106,12 +106,22 @@ retire disproven advice rather than accumulating contradictions. Keep general
 rules here and feature details in the linked record.
 
 Feature index:
+- [Grafana log routing](docs/lessons/grafana-log-routing.md): codebase ownership,
+  Alloy label schemas, live inventory, Faro parsing, and skill deployment.
+- [Codex MCP import](docs/lessons/codex-mcp.md): private Pi-to-Codex conversion,
+  settings preservation, refusal paths, and native server verification.
 - [Code review](docs/lessons/code-review.md): instruction-based architecture review,
   scoped exceptions, level coverage, and safe skill migrations.
+- [Pi workflow resolution](docs/lessons/pi-workflow-resolution.md): slash lookup,
+  manual-only skills, native expansion, and installed-runtime regression tests.
 - [Pi subagent models](docs/lessons/pi-subagent-models.md): complete credential-backed
   model discovery, provider grouping, and inference verification limits.
 - [Pi Command shortcuts](docs/lessons/pi-command-shortcuts.md): fullscreen
   selection, iTerm2/tmux key routing, clipboard isolation, and session-local maps.
+- [Pi path completion](docs/lessons/pi-path-completion.md): stale-menu acceptance,
+  version-gated native and bundle patches, and active-CLI regression checks.
+- [Pi wakeups](docs/lessons/pi-wakeups.md): timer/command runtime, calendar and
+  process-cleanup limits, model qualification, failure controls, and deployment.
 - [Pi session lifecycle](docs/lessons/pi-session-lifecycle.md): saved-session
   ownership, terminal loss, worker shutdown, startup replay, failure handling,
   and isolated deployment verification.

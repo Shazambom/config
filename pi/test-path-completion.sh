@@ -15,7 +15,7 @@ umask 077
 work="$(mktemp -d "${TMPDIR:-/tmp}/pi-path-proof.XXXXXX")"
 socket="$work/tmux.sock"
 trap 'tmux -S "$socket" kill-server 2>/dev/null || true; printf "Path proof artifacts: %s\n" "$work"' EXIT
-mkdir -p "$work/home/.pi/agent" "$work/cwd/claude/skills/why/references" "$work/home/fixture"
+mkdir -p "$work/home/.pi/agent" "$work/cwd/claude/skills/why/references" "$work/home/fixture" "$work/home/Downloads"
 printf 'Bounded repository fixture.\n' > "$work/cwd/claude/skills/why/references/epistemics.md"
 printf 'Bounded home fixture.\n' > "$work/home/fixture/epistemics.md"
 mkdir -p "$work/cwd/space dir" "$work/home/space dir"
@@ -110,6 +110,14 @@ for mode in off on; do
 for mode in off on; do
   if [[ "$mode" == off ]]; then key F7; else key F8; fi
   for accept in Enter Tab; do
+    # Accept a home directory while its typed prefix is newer than the menu.
+    text '@~/Do'
+    before="$(jq -s '[.[]|select(.type=="completion")]|length' "$work/events.jsonl")"
+    tmux -S "$socket" send-keys -t proof -l w \; send-keys -t proof "$accept"
+    wait_event "[.[]|select(.type==\"completion\")]|length == $((before+1))"
+    draft '@~/Downloads/'
+    key C-a; key C-k
+    draft ''
     for suffix in '' ' suffix'; do
       if [[ -n "$suffix" ]]; then text "$suffix"; key C-a; fi
       text '@~/fixture/epi'

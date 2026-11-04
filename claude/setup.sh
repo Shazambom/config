@@ -128,6 +128,24 @@ migrate_bundled_timeline() {
 }
 migrate_bundled_timeline
 
+migrate_bundled_grafana_logs() {
+  local target="$destination/skills/grafana-logs" backup="$destination/grafana-logs-skill-backup-v1" digest
+  [[ ! -L "$destination" && ! -L "$destination/skills" ]] || return 0
+  [[ -d "$target" && ! -L "$target" && -f "$target/SKILL.md" && ! -L "$target/SKILL.md" ]] || return 0
+  [[ ! -e "$backup" && ! -L "$backup" ]] || return 0
+  [[ -z "$(find "$target" -mindepth 1 ! -path "$target/SKILL.md" -print -quit)" ]] || return 0
+  if command -v shasum >/dev/null 2>&1; then digest="$(shasum -a 256 < "$target/SKILL.md")"
+  elif command -v sha256sum >/dev/null 2>&1; then digest="$(sha256sum < "$target/SKILL.md")"
+  else return 0; fi
+  [[ "${digest%% *}" == d2b6c22dba459ef33196a19c3ab20383fc1f8930243ef8697c04c0212ec242c9 ]] || return 0
+  [[ -f "$source_root/skills/grafana-logs/SKILL.md" ]] || return 0
+  cmp -s "$target/SKILL.md" "$source_root/skills/grafana-logs/SKILL.md" && return 0
+  mkdir -m 700 "$backup" || return 0
+  mv "$target" "$backup/grafana-logs"
+  printf 'Backed up bundled grafana-logs skill to %s\n' "$backup/grafana-logs"
+}
+migrate_bundled_grafana_logs
+
 migrate_bundled_code_review() {
   local target="$destination/skills/code-review" backup version
   local expected current latest relative digest entry count=0

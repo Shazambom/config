@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: scheduler-worker
+expected_outcome: |
+  Routes Scheduler worker to service_name="scheduler-worker", environment="prod", without substituting scheduler-api or using app/env as indexed Kubernetes labels.
+  Refresh datasource and both app and service_name inventories before log retrieval. Show the routing decision and treat all calls as proposed.

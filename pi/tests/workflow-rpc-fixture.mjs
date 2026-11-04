@@ -2,12 +2,17 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const agentDir = process.env.PI_CODING_AGENT_DIR;
 const cli = process.env.PI_WORKFLOW_CLI;
 const expected = readFileSync(join(process.env.HOME, '.claude/commands/tdd.md'), 'utf8');
+const manualPath = join(agentDir, 'skills/timeline/SKILL.md');
+const manual = '---\nname: timeline\ndescription: Manual timeline fixture\ndisable-model-invocation: true\n---\nExact manual instructions. Read references/evidence.md relative to this skill.\n';
+mkdirSync(join(agentDir, 'skills/timeline'), { recursive: true });
+writeFileSync(manualPath, manual);
+const noSkills = process.env.PI_WORKFLOW_NO_SKILLS === '1';
 const requests = [];
 let failure;
 const server = createServer(async (req, res) => {
@@ -23,9 +28,19 @@ const server = createServer(async (req, res) => {
     const text = typeof last.content === 'string' ? last.content : last.content.map(part => part.text ?? '').join('');
     if (last.role === 'user' && text === 'LOOKUP_TDD') {
       call = { name: 'load_workflow', arguments: JSON.stringify({ name: '/tdd' }) };
+    } else if (last.role === 'user' && text === '/timeline') {
+      assert(!JSON.stringify(body.messages.filter(m => m.role === 'system')).includes('<name>timeline</name>'), 'Manual skill stays out of proactive catalog');
+      call = { name: 'load_workflow', arguments: JSON.stringify({ name: '/timeline' }) };
     } else if (last.role === 'tool') {
-      assert(text.includes(`Path: ${join(process.env.HOME, '.claude/commands/tdd.md')}`));
-      assert(text.endsWith(expected));
+      const args = JSON.parse(body.messages.at(-2).tool_calls[0].function.arguments);
+      const isManual = args.name === '/timeline';
+      if (isManual && noSkills) {
+        assert.equal(text, 'Workflow not found in the discovered index: /timeline');
+      } else {
+        assert(text.includes(`Path: ${isManual ? manualPath : join(process.env.HOME, '.claude/commands/tdd.md')}`), text);
+        assert(text.includes(`Relative references: ${isManual ? join(agentDir, 'skills/timeline') : join(process.env.HOME, '.claude/commands')}`));
+        assert(text.endsWith(isManual ? manual : expected));
+      }
     } else {
       assert.equal(last.role, 'user');
       const nativeBody = expected.replace(/^---\n[\s\S]*?\n---\n/, '').trim().replaceAll('$ARGUMENTS', 'NATIVE_ARGUMENT');
@@ -42,7 +57,7 @@ const server = createServer(async (req, res) => {
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 writeFileSync(join(agentDir, 'models.json'), JSON.stringify({ providers: { lookup: { api: 'openai-completions', apiKey: 'local-fixture', baseUrl: `http://127.0.0.1:${server.address().port}/v1`, models: [{ id: 'lookup', contextWindow: 128000, maxTokens: 2048 }] } } }));
-const child = spawn(process.execPath, [cli, '--mode', 'rpc', '--offline', '--no-session', '--no-extensions', '-e', join(agentDir, 'extensions/claude-skills.ts'), '--tools', 'read,load_workflow', '--provider', 'lookup', '--model', 'lookup', '--thinking', 'off', '--no-approve'], { stdio: ['pipe', 'pipe', 'pipe'] });
+const child = spawn(process.execPath, [cli, ...(noSkills ? ['--no-skills'] : []), '--mode', 'rpc', '--offline', '--no-session', '--no-extensions', '-e', join(agentDir, 'extensions/claude-skills.ts'), '--tools', 'read,load_workflow', '--provider', 'lookup', '--model', 'lookup', '--thinking', 'off', '--no-approve'], { stdio: ['pipe', 'pipe', 'pipe'] });
 let buffer = '', stderr = '';
 const pending = new Map();
 child.stderr.on('data', data => { stderr += data; });
@@ -64,15 +79,16 @@ try {
   assert(index.success);
   assert(index.data.commands.some(c => c.name === 'tdd' && c.source === 'prompt'));
   assert(!index.data.commands.some(c => c.name === 'skill:tdd'));
-  for (const [id, message] of [['native', '/tdd NATIVE_ARGUMENT'], ['lookup', 'LOOKUP_TDD']]) {
+  assert.equal(index.data.commands.some(c => c.name === 'skill:timeline' && c.source === 'skill'), !noSkills);
+  for (const [id, message] of [['manual', '/timeline'], ['native', '/tdd NATIVE_ARGUMENT'], ['lookup', 'LOOKUP_TDD']]) {
     const ended = receive('agent_end');
     const accepted = await command({ type: 'prompt', id, message });
     assert(accepted.success, JSON.stringify(accepted));
     await ended;
     if (failure) throw failure;
   }
-  assert.equal(requests.length, 3);
-  console.log(`PASS: ${cli}: restricted fresh RPC CLI native /tdd expansion and load_workflow full unchanged prompt at provider boundary.`);
+  assert.equal(requests.length, 5);
+  console.log(`PASS: ${cli}: restricted fresh RPC CLI /timeline input -> load_workflow -> ${noSkills ? 'not found with --no-skills' : 'unchanged hidden skill'}; native /tdd expansion and prompt lookup at provider boundary.`);
 } finally {
   clearTimeout(timeout);
   child.kill('SIGTERM');

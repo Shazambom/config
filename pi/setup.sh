@@ -136,6 +136,14 @@ while IFS= read -r -d '' source; do
   mkdir -p "$(dirname -- "$agent/$relative")"
   cp "$source" "$agent/$relative"
 done < "$stage/resources"
+# The explicitly loaded wakeups module shares the lockfile-pinned dependencies.
+wakeups_modules="$agent/wakeups/node_modules"
+if [[ -e "$wakeups_modules" && ! -L "$wakeups_modules" ]]; then
+  printf 'Refusing to replace non-symlink dependency path: %s\n' "$wakeups_modules" >&2
+  exit 1
+fi
+rm -f -- "$wakeups_modules"
+ln -s "$repo/pi/node_modules" "$wakeups_modules"
 for entry in \
   'extensions/subagent/config.json:ff02ed2fb474b96db9e205864dea567e83210dbbb267069aa60cd48144ea3395' \
   'extensions/mascot.ts:be0cdca42e790934b84c56c18d9f995fdfb611d660ee9ee01f1ff230cb5db9c6' \

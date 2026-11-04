@@ -14,6 +14,8 @@
     "linkedom": "0.16.11",
     "playwright-core": "1.60.0",
     "turndown": "7.2.4",
-    "unpdf": "1.4.0"
+    "unpdf": "1.4.0",
+    "cron-parser": "5.10.2",
+    "luxon": "3.7.2"
   }
 }

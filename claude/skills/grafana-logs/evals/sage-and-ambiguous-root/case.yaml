@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: sage-and-ambiguous-root
+expected_outcome: |
+  Routes Sage to app="sage" without inventing environment labels and states missing environment isolation. Asks for collector-self versus upstream application/component for infrastructure root instead of guessing scheduler-api.
+  Refresh datasource and both app and service_name inventories before log retrieval. Show the routing decision and treat all calls as proposed.

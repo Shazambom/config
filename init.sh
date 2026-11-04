@@ -2,8 +2,12 @@
 
 set -euo pipefail
 repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# Explicit import only; ordinary Pi setup does not modify Codex configuration.
+if [[ $# == 1 && "$1" == --codex-mcp ]]; then
+  exec bash "$repo/codex/import-mcp.sh"
+fi
 if [[ $# -gt 1 || ( $# -eq 1 && "$1" != "--pi" && "$1" != "--pi-no-terminal" ) ]]; then
-  echo 'Usage: init.sh [--pi | --pi-no-terminal] (default: Pi and Neovim; --pi-no-terminal skips tmux/iTerm setup)' >&2
+  echo 'Usage: init.sh [--pi | --pi-no-terminal | --codex-mcp] (default: Pi and Neovim; --pi-no-terminal skips tmux/iTerm setup; --codex-mcp imports Pi MCP definitions only)' >&2
   exit 1
 fi
 
