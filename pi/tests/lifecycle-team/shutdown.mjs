@@ -25,7 +25,7 @@ function adapter() {
   const handlers = new Map();
   const emitter = new EventEmitter();
   let tools = [];
-  const pi = { on: (name, fn) => handlers.set(name, fn), events: { emit: (n, v) => emitter.emit(n, v), on: (n, fn) => { emitter.on(n, fn); return () => emitter.off(n, fn); } }, registerTool() {}, registerCommand() {}, getActiveTools: () => tools, setActiveTools: t => { tools = t; }, appendEntry() {}, sendMessage() {} };
+  const pi = { on: (name, fn) => handlers.set(name, fn), events: { emit: (n, v) => emitter.emit(n, v), on: (n, fn) => { emitter.on(n, fn); return () => emitter.off(n, fn); } }, registerFlag() {}, getFlag() { return false; }, registerTool() {}, registerCommand() {}, getActiveTools: () => tools, setActiveTools: t => { tools = t; }, appendEntry() {}, sendMessage() {} };
   const ctx = { sessionManager: { getSessionId: () => 'shutdown', getEntries: () => [] }, isIdle: () => true, hasPendingMessages: () => false, shutdown() {} };
   extension(pi);
   return { ctx, start: () => handlers.get('session_start')({}, ctx), stop: () => handlers.get('session_shutdown')({}, ctx) };

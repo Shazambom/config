@@ -6,8 +6,13 @@ repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 if [[ $# == 1 && "$1" == --codex-mcp ]]; then
   exec bash "$repo/codex/import-mcp.sh"
 fi
+delivery_receipt=''
+if [[ $# == 2 && "$1" == --pi-delivery && -n "$2" ]]; then
+  delivery_receipt="$2"
+  set -- --pi-no-terminal
+fi
 if [[ $# -gt 1 || ( $# -eq 1 && "$1" != "--pi" && "$1" != "--pi-no-terminal" ) ]]; then
-  echo 'Usage: init.sh [--pi | --pi-no-terminal | --codex-mcp] (default: Pi and Neovim; --pi-no-terminal skips tmux/iTerm setup; --codex-mcp imports Pi MCP definitions only)' >&2
+  echo 'Usage: init.sh [--pi | --pi-no-terminal | --codex-mcp | --pi-delivery NEW_RECEIPT] (default: Pi and Neovim; --pi-no-terminal skips tmux/iTerm setup; --codex-mcp imports Pi MCP definitions only)' >&2
   exit 1
 fi
 
@@ -38,6 +43,9 @@ export CONFIG_PI_GLOBAL_PREFIX="$pi_global_prefix"
   ensure_pi_runtime
   source "$repo/pi/jq.sh"
   ensure_pi_jq
+  if [[ -n "$delivery_receipt" ]]; then
+    exec bash "$repo/pi/delivery.sh" "$delivery_receipt"
+  fi
   bash "$repo/pi/setup.sh"
   if [[ "${1:-}" != "--pi-no-terminal" ]]; then
     bash "$repo/tmux/setup.sh"
@@ -64,6 +72,7 @@ if [[ -n "$pi_global_prefix" ]]; then
     *) printf 'Add %s/bin to your shell PATH to run pi directly.\n' "$pi_global_prefix" >&2 ;;
   esac
 fi
+[[ -z "$delivery_receipt" ]] || exit 0
 printf '%s\n' 'Pi setup complete.' >&2
 [[ $# == 0 ]] || exit 0
 

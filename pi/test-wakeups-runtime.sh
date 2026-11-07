@@ -9,7 +9,9 @@ evidence="$(cd "$evidence" && pwd)"
 candidate="${2:-$here/agent/wakeups/index.ts}"
 case "${3:-one-shot}" in
   one-shot) exec node "$here/tests/wakeups-runtime/run.mjs" "$evidence" "$candidate" ;;
+  batch) exec node "$here/tests/wakeups-runtime/cli-batch.mjs" "$evidence" "$(dirname "$candidate")/runtime.mjs" ;;
   all)
+    node "$here/tests/wakeups-runtime/cli-batch.mjs" "$evidence/batch" "$(dirname "$candidate")/runtime.mjs"
     mkdir -p "$evidence/one-shot" "$evidence/rpc" "$evidence/print"
     node "$here/tests/wakeups-runtime/run.mjs" "$evidence/one-shot" "$candidate"
     for scenario in timers shell lifecycle; do
@@ -20,5 +22,5 @@ case "${3:-one-shot}" in
     node "$here/tests/wakeups-runtime/cli-owned.mjs" "$evidence/shutdown" "$candidate" quit
     node "$here/tests/wakeups-runtime/cli-owned.mjs" "$evidence/root-death" "$candidate" kill
     ;;
-  *) printf 'Usage: %s [evidence-directory] [candidate-entrypoint] [one-shot|all]\n' "$0" >&2; exit 2 ;;
+  *) printf 'Usage: %s [evidence-directory] [candidate-entrypoint] [one-shot|batch|all]\n' "$0" >&2; exit 2 ;;
 esac

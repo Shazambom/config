@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: workflow-approval-not-report
+expected_outcome: |
+  Draft in chat, request explicit report approval, and stop without planning any persistence.

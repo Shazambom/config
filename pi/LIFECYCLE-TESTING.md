@@ -6,7 +6,13 @@ Fixture cleanup must never count as the application satisfying a lifecycle rule.
 
 ## Approved implementation boundary
 
-Use an extension and an external supervisor, not patches to Pi's native CLI or SDK.
+Saved-session ownership uses an extension and an external supervisor. The approved
+RPC integration also adds repo-owned, version/hash-checked native Pi support for
+request readiness, cancellation-safe settlement and scoped command tool execution.
+These APIs are client-neutral; T3-specific behavior belongs in the opt-in adapter,
+not native core. T3 itself must not be modified. See
+[the integration lessons](../docs/lessons/pi-t3-integration.md).
+
 Brief startup overlap and native startup metadata writes are acceptable; the guard
 must resolve ownership before admitting continued agent/tool work. Tests distinguish
 startup metadata from conversation changes rather than demanding byte-identical files.
@@ -23,8 +29,10 @@ killing a process. A known conflict must not be disguised as an initialization e
 Guard initialization errors do not brick Pi: show a persistent, prominent unprotected
 warning, write private credential-safe diagnostics including a stack trace, and
 inject one investigation prompt per failure without repeating it on redraw/reload.
-Test this failure behavior separately from healthy ownership enforcement. There is
-no exact-version allowlist; unsupported required APIs take this visible failure path.
+Test this failure behavior separately from healthy ownership enforcement. The lease protocol has
+no exact-version allowlist; unsupported required ownership APIs take this visible
+failure path. Native RPC patch deployment separately requires recognized versions
+and hashes. A missing readiness boundary must not silently admit RPC work.
 An extension that is disabled or cannot itself be loaded cannot provide protection.
 
 The user manages restarts. Deployment must not restart or terminate existing

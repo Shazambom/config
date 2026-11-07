@@ -2,6 +2,14 @@
 # Invoked only through init.sh --pi, after pinned Node/npm/jq bootstrap.
 set -euo pipefail
 repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# Private handoff supplied only by the explicit checked-delivery wrapper.
+handoff=''
+if [[ $# == 2 && "$1" == --delivery-handoff ]]; then
+  handoff="$2"
+elif [[ $# != 0 ]]; then
+  echo 'Usage: setup.sh [--delivery-handoff PRIVATE_PATH]' >&2
+  exit 2
+fi
 bash "$repo/claude/setup.sh"
 # Reinstall only when the lockfile changes or the executable is missing.
 if [[ ! -x "$repo/pi/node_modules/.bin/pi" ]] || ! cmp -s "$repo/pi/package-lock.json" "$repo/pi/node_modules/.portable-lock.json"; then
@@ -17,6 +25,24 @@ if [[ -n "${CONFIG_PI_GLOBAL_PREFIX:-}" && "${CONFIG_PI_INSTALL_GLOBAL:-0}" == 1
 fi
 bash "$repo/pi/path-completion.sh"
 bash "$repo/pi/render-width.sh"
+# Keep the fallback pin and independently updated CLI versions unchanged. Install the
+# client-neutral RPC fix only when this selected runtime is a verified version.
+rpc_package="$repo/pi/node_modules/@earendil-works/pi-coding-agent"
+if [[ -z "${CONFIG_PI_HOME:-}" && -n "${CONFIG_PI_COMMAND_PATH:-}" ]]; then
+  source "$repo/pi/command-path.sh"
+  rpc_cli="$(pi_real_command "$CONFIG_PI_COMMAND_PATH")"
+  case "$rpc_cli" in
+    */dist/bundle/cli.js) rpc_package="${rpc_cli%/dist/bundle/cli.js}" ;;
+    */dist/cli.js) rpc_package="${rpc_cli%/dist/cli.js}" ;;
+    *) rpc_package='' ;;
+  esac
+fi
+if [[ -n "$handoff" ]]; then
+  jq -n --arg package "$rpc_package" '{package: $package}' > "$handoff"
+fi
+if [[ -z "$rpc_package" ]] || ! bash "$repo/pi/rpc-readiness.sh" "$rpc_package" >&2; then
+  echo 'Warning: RPC readiness is unavailable for this runtime. --t3 will refuse to start; ordinary terminal mode is unchanged.' >&2
+fi
 agent="${CONFIG_PI_HOME:-$HOME/.pi}/agent"
 mkdir -p "$agent"
 chmod 700 "$agent"

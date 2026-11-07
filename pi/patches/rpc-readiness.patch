@@ -1,0 +1,658 @@
+diff --git a/dist/modes/rpc/rpc-mode.js b/dist/modes/rpc/rpc-mode.js
+--- a/dist/modes/rpc/rpc-mode.js
++++ b/dist/modes/rpc/rpc-mode.js
+@@ -43,6 +43,62 @@
+     let shutdownRequested = false;
+     let shuttingDown = false;
+     const signalCleanupHandlers = [];
++    const READINESS_TIMEOUT_MS = 10000;
++    const executionCommands = new Set(["prompt", "steer", "follow_up", "compact", "bash"]);
++    const replacementCommands = new Set(["new_session", "switch_session", "fork", "clone"]);
++    const pendingReadiness = new Map();
++    let sessionEpoch = 0;
++    let pendingTransition;
++    async function replaceSession(operation) {
++        const transition = operation();
++        pendingTransition = transition;
++        try { return await transition; }
++        finally { if (pendingTransition === transition) pendingTransition = undefined; }
++    }
++    const sessionKey = () => JSON.stringify([session.sessionFile, session.sessionManager.getSessionId()]);
++    function cancelReadiness(message, executionOnly = false) {
++        for (const [controller, command] of pendingReadiness) {
++            if (!executionOnly || executionCommands.has(command)) controller.abort(new Error(message));
++        }
++    }
++    function changingSession() {
++        sessionEpoch++;
++        cancelReadiness("RPC request cancelled: session changed");
++    }
++    async function ready(command, phase, expectedKey, epoch) {
++        const controller = new AbortController();
++        const signal = controller.signal;
++        pendingReadiness.set(controller, command);
++        const timer = setTimeout(() => controller.abort(new Error("RPC readiness deadline exceeded")), READINESS_TIMEOUT_MS);
++        let onAbort;
++        const aborted = new Promise((_, reject) => {
++            onAbort = () => reject(signal.reason);
++            signal.addEventListener("abort", onAbort, { once: true });
++        });
++        const check = () => {
++            signal.throwIfAborted();
++            if (epoch !== sessionEpoch || sessionKey() !== expectedKey) throw new Error("RPC request cancelled: session changed");
++        };
++        try {
++            await Promise.race([initialBinding, aborted]);
++            check();
++            for (;;) {
++                if (pendingTransition) await Promise.race([pendingTransition, aborted]);
++                check();
++                const current = session;
++                await Promise.race([current.extensionRunner.emitRpcReady(Object.freeze({ type: "rpc_ready", command, phase, signal })), aborted]);
++                if (pendingTransition) await Promise.race([pendingTransition, aborted]);
++                check();
++                if (current === session) return;
++                // Same-file freshness replacement is allowed; another target or
++                // an explicit client transition is fenced by the checks above.
++            }
++        } finally {
++            clearTimeout(timer);
++            signal.removeEventListener("abort", onAbort);
++            pendingReadiness.delete(controller);
++        }
++    }
+     /** Helper for dialog methods with signal/timeout support */
+     function createDialogPromise(opts, defaultValue, request, parseResponse) {
+         if (opts?.signal?.aborted)
+@@ -232,9 +288,10 @@
+             mode: "rpc",
+             commandContextActions: {
+                 waitForIdle: () => session.waitForIdle(),
+-                newSession: async (options) => runtimeHost.newSession(options),
++                newSession: async (options) => { changingSession(); return replaceSession(() => runtimeHost.newSession(options)); },
+                 fork: async (entryId, forkOptions) => {
+-                    const result = await runtimeHost.fork(entryId, forkOptions);
++                    changingSession();
++                    const result = await replaceSession(() => runtimeHost.fork(entryId, forkOptions));
+                     return { cancelled: result.cancelled };
+                 },
+                 navigateTree: async (targetId, options) => {
+@@ -247,14 +304,17 @@
+                     return { cancelled: result.cancelled };
+                 },
+                 switchSession: async (sessionPath, options) => {
+-                    return runtimeHost.switchSession(sessionPath, options);
++                    if (sessionPath !== session.sessionFile) changingSession();
++                    return replaceSession(() => runtimeHost.switchSession(sessionPath, options));
+                 },
+                 reload: async () => {
+-                    await session.reload();
++                    changingSession();
++                    await replaceSession(() => session.reload());
+                 },
+             },
+             shutdownHandler: () => {
+                 shutdownRequested = true;
++                cancelReadiness("RPC request cancelled: shutdown");
+             },
+             onError: (err) => {
+                 output({ type: "extension_error", extensionPath: err.extensionPath, event: err.event, error: err.error });
+@@ -286,7 +346,12 @@
+             signalCleanupHandlers.push(() => process.off(signal, handler));
+         }
+     };
+-    await rebindSession();
++    // Start binding, but keep reading UI replies while startup handlers await
++    // ownership dialogs. All ordinary commands await this binding in ready().
++    const initialBinding = rebindSession();
++    initialBinding.then(() => {
++        if (pendingReadiness.size === 0) void checkShutdownRequested();
++    }, () => {});
+     registerSignalHandlers();
+     // Handle a single command
+     const handleCommand = async (command) => {
+@@ -333,7 +398,7 @@
+             }
+             case "new_session": {
+                 const options = command.parentSession ? { parentSession: command.parentSession } : undefined;
+-                const result = await runtimeHost.newSession(options);
++                const result = await replaceSession(() => runtimeHost.newSession(options));
+                 if (!result.cancelled) {
+                     await rebindSession();
+                 }
+@@ -472,14 +537,14 @@
+                 return success(id, "export_html", { path });
+             }
+             case "switch_session": {
+-                const result = await runtimeHost.switchSession(command.sessionPath);
++                const result = await replaceSession(() => runtimeHost.switchSession(command.sessionPath));
+                 if (!result.cancelled) {
+                     await rebindSession();
+                 }
+                 return success(id, "switch_session", result);
+             }
+             case "fork": {
+-                const result = await runtimeHost.fork(command.entryId);
++                const result = await replaceSession(() => runtimeHost.fork(command.entryId));
+                 if (!result.cancelled) {
+                     await rebindSession();
+                 }
+@@ -490,7 +555,7 @@
+                 if (!leafId) {
+                     return error(id, "clone", "Cannot clone session: no current entry selected");
+                 }
+-                const result = await runtimeHost.fork(leafId, { position: "at" });
++                const result = await replaceSession(() => runtimeHost.fork(leafId, { position: "at" }));
+                 if (!result.cancelled) {
+                     await rebindSession();
+                 }
+@@ -581,6 +646,7 @@
+             process.exit(exitCode);
+         }
+         shuttingDown = true;
++        cancelReadiness("RPC request cancelled: shutdown");
+         for (const cleanup of signalCleanupHandlers) {
+             cleanup();
+         }
+@@ -624,7 +690,16 @@
+         }
+         const command = parsed;
+         try {
++            if (command.type === "abort") cancelReadiness("RPC request aborted", true);
++            if (replacementCommands.has(command.type)) changingSession();
++            if (!["abort", "abort_bash", "abort_retry"].includes(command.type)) {
++                await ready(command.type, "before_dispatch", sessionKey(), sessionEpoch);
++            }
++            if (shuttingDown) throw new Error("RPC request cancelled: shutdown");
+             const response = await handleCommand(command);
++            if (replacementCommands.has(command.type) && response?.success && !response.data?.cancelled) {
++                await ready(command.type, "after_session_change", sessionKey(), sessionEpoch);
++            }
+             if (response) {
+                 output(response);
+                 await waitForRawStdoutBackpressure();
+@@ -634,6 +709,7 @@
+         catch (commandError) {
+             output(error(command.id, command.type, commandError instanceof Error ? commandError.message : String(commandError)));
+             await waitForRawStdoutBackpressure();
++            await checkShutdownRequested();
+         }
+     };
+     const onInputEnd = () => {
+diff --git a/dist/core/extensions/runner.js b/dist/core/extensions/runner.js
+--- a/dist/core/extensions/runner.js
++++ b/dist/core/extensions/runner.js
+@@ -615,6 +615,7 @@
+         const getModel = this.getModel;
+         const getScopedModels = this.getScopedModels;
+         return {
++            rpcReadiness: true,
+             get ui() {
+                 runner.assertActive();
+                 return runner.uiContext;
+@@ -721,11 +722,12 @@
+             },
+         });
+     }
+-    createCommandContext() {
+-        // Use property descriptors instead of object spread so the guarded getters from
+-        // createContext() stay lazy. A spread would eagerly read them once and freeze the
+-        // old values into the returned object, bypassing stale-instance checks.
+-        const context = Object.defineProperties({}, Object.getOwnPropertyDescriptors(this.createContext()));
++    createCommandContext(commandId, signal) {
++        // Keep the guarded getters from createToolContext. Only an actual
++        // registered-command invocation owns a tool scope; replacement contexts
++        // remain unscoped and cannot issue command-origin tool calls.
++        const context = this.createToolContext(commandId ?? "command:unscoped", signal);
++        if (signal) Object.defineProperty(context, "signal", { value: signal });
+         context.getSystemPromptOptions = () => {
+             this.assertActive();
+             return this.getSystemPromptOptionsFn();
+@@ -810,6 +812,21 @@
+             event.type === "session_before_compact" ||
+             event.type === "session_before_tree");
+     }
++    // Readiness is a pre-dispatch boundary: errors reject the original RPC
++    // request. Ordinary notification dispatch intentionally catches errors.
++    async emitRpcReady(event) {
++        const ctx = this.createContext();
++        for (const { handlers } of snapshotEventHandlers(this.extensions, "rpc_ready")) {
++            for (const handler of handlers) {
++                event.signal.throwIfAborted();
++                // A prior readiness participant may finish a same-file runtime
++                // replacement. Let the RPC host continue on its fresh runner.
++                if (this.staleMessage) return;
++                await handler(event, ctx);
++            }
++        }
++        event.signal.throwIfAborted();
++    }
+     async emit(event) {
+         const ctx = this.createContext();
+         let result;
+diff --git a/dist/core/extensions/types.d.ts b/dist/core/extensions/types.d.ts
+--- a/dist/core/extensions/types.d.ts
++++ b/dist/core/extensions/types.d.ts
+@@ -211,6 +211,8 @@
+  */
+ export type ExtensionMode = "tui" | "rpc" | "json" | "print";
+ export interface ExtensionContext {
++    /** This runtime implements the error-propagating rpc_ready boundary. */
++    readonly rpcReadiness: true;
+     /** UI methods for user interaction */
+     ui: ExtensionUIContext;
+     /** Current run mode. Use "tui" to guard terminal-only UI such as custom components. */
+@@ -283,7 +285,14 @@
+  * Extended context for command handlers.
+  * Includes session control methods only safe in user-initiated commands.
+  */
+-export interface ExtensionCommandContext extends ExtensionContext {
++/** executeTool is authorized only while this registered command handler runs.
++ * Calls use command:<uuid>/<n> IDs and the existing validated tool/hook pipeline.
++ * No assistant or transcript tool-result message is synthesized. Tools receive
++ * the invocation's abort signal combined with any caller-provided signal.
++ * Handler completion, abort, reload, and disposal close the invocation scope.
++ * Replacement contexts have no command-owned tool execution scope.
++ */
++export interface ExtensionCommandContext extends ExtensionToolContext {
+     /** Get the current base system-prompt construction options. */
+     getSystemPromptOptions(): BuildSystemPromptOptions;
+     /** Wait for the agent to finish streaming */
+@@ -552,6 +561,14 @@
+     servers: RegisteredMcpServer[];
+ }
+ /** Fired when a session is started, loaded, or reloaded */
++export interface RpcReadyEvent {
++    type: "rpc_ready";
++    /** External RPC command name; no caller payload is exposed or replayed. */
++    readonly command: string;
++    readonly phase: "before_dispatch" | "after_session_change";
++    /** Aborted on the fixed ten-second deadline, cancellation, or shutdown. */
++    readonly signal: AbortSignal;
++}
+ export interface SessionStartEvent {
+     type: "session_start";
+     /** Why this session start happened. */
+@@ -765,10 +782,16 @@
+ /** Fired before final settlement. May append entries and ensure one next provider request. */
+ export interface AgentBeforeSettleEvent extends BoundaryState {
+     type: "agent_before_settle";
++    /** Live for this awaited boundary; aborted by session abort or disposal.
++     * Use this instead of ctx.signal after the low-level agent loop has ended.
++     */
++    readonly signal: AbortSignal;
+ }
+ /** Fired after an agent run has fully settled and no automatic retry, compaction, or queued continuation will run. */
+ export interface AgentSettledEvent {
+     type: "agent_settled";
++    /** Snapshot of the settled run, including abort during an awaited boundary. */
++    readonly aborted: boolean;
+ }
+ export type UIPromptKind = "select" | "confirm" | "input" | "editor" | "custom";
+ /** Fired when Pi starts waiting on a blocking user-facing extension UI prompt. */
+@@ -1043,7 +1066,7 @@
+     input: TInput;
+ };
+ /** Union of all event types */
+-export type ExtensionEvent = ProjectTrustEvent | ResourcesDiscoverEvent | McpServersChangeEvent | SessionEvent | ContextEvent | ContextWithSystemEvent | CacheWarmingDecisionEvent | BeforeProviderRequestEvent | BeforeProviderHeadersEvent | AfterProviderResponseEvent | ProviderStreamEvent | BeforeAgentStartEvent | AgentStartEvent | AgentEndEvent | AgentBeforeSettleEvent | AgentSettledEvent | UIPromptStartEvent | UIPromptEndEvent | TurnStartEvent | TurnEndEvent | MessageStartEvent | MessageUpdateEvent | MessageEndEvent | ToolExecutionStartEvent | ToolExecutionUpdateEvent | ToolExecutionEndEvent | ModelSelectEvent | ThinkingLevelSelectEvent | UserBashEvent | InputEvent | ToolCallEvent | ToolResultEvent;
++export type ExtensionEvent = RpcReadyEvent | ProjectTrustEvent | ResourcesDiscoverEvent | McpServersChangeEvent | SessionEvent | ContextEvent | ContextWithSystemEvent | CacheWarmingDecisionEvent | BeforeProviderRequestEvent | BeforeProviderHeadersEvent | AfterProviderResponseEvent | ProviderStreamEvent | BeforeAgentStartEvent | AgentStartEvent | AgentEndEvent | AgentBeforeSettleEvent | AgentSettledEvent | UIPromptStartEvent | UIPromptEndEvent | TurnStartEvent | TurnEndEvent | MessageStartEvent | MessageUpdateEvent | MessageEndEvent | ToolExecutionStartEvent | ToolExecutionUpdateEvent | ToolExecutionEndEvent | ModelSelectEvent | ThinkingLevelSelectEvent | UserBashEvent | InputEvent | ToolCallEvent | ToolResultEvent;
+ export interface ContextEventResult {
+     messages?: AgentMessage[];
+ }
+@@ -1151,6 +1174,11 @@
+ export interface ExtensionAPI {
+     on(event: "project_trust", handler: ProjectTrustHandler): () => void;
+     on(event: "resources_discover", handler: ExtensionHandler<ResourcesDiscoverEvent, ResourcesDiscoverResult>): () => void;
++    /** Awaited before RPC dispatch and after session replacement. Rejection fails
++     * the original request. UI replies and cancellation do not wait on this hook.
++     * Handlers must not execute the caller's task or retain ctx across awaits.
++     */
++    on(event: "rpc_ready", handler: ExtensionHandler<RpcReadyEvent>): () => void;
+     on(event: "session_start", handler: ExtensionHandler<SessionStartEvent>): () => void;
+     on(event: "session_info_changed", handler: ExtensionHandler<SessionInfoChangedEvent>): () => void;
+     on(event: "session_before_switch", handler: ExtensionHandler<SessionBeforeSwitchEvent, SessionBeforeSwitchResult>): () => void;
+diff --git a/dist/core/extensions/runner.d.ts b/dist/core/extensions/runner.d.ts
+--- a/dist/core/extensions/runner.d.ts
++++ b/dist/core/extensions/runner.d.ts
+@@ -11,7 +11,7 @@
+ import type { SessionManager } from "../session-manager.ts";
+ import { type BuildSystemPromptOptions, type NormalizedBuildSystemPromptOptions } from "../system-prompt.ts";
+ import type { VirtualModelDefinition } from "../virtual-models.ts";
+-import type { AgentBeforeSettleEvent, BeforeAgentStartEvent, BeforeAgentStartEventResult, BeforeProviderHeadersEvent, BeforeProviderRequestEvent, BoundaryContextPreview, CacheWarmingDecisionEvent, ContextEvent, ContextWithSystemEvent, EntryRenderer, Extension, ExtensionActions, ExtensionCommandContext, ExtensionCommandContextActions, ExtensionContext, ExtensionContextActions, ExtensionError, ExtensionEvent, ExtensionFlag, ExtensionMode, ExtensionRuntime, ExtensionShortcut, ExtensionToolContext, ExtensionUIContext, InputEvent, InputEventResult, InputSource, LoadExtensionsResult, MarkdownTransformer, MessageEndEvent, MessageRenderer, ProjectTrustContext, ProjectTrustEvent, ProjectTrustEventResult, ProviderConfig, RegisteredTool, ReplacedSessionContext, ResolvedCommand, ResourcesDiscoverEvent, SessionBeforeCompactResult, SessionBeforeForkResult, SessionBeforeSwitchResult, SessionBeforeTreeResult, SessionBoundaryDraft, SessionShutdownEvent, ToolCallEvent, ToolCallEventResult, ToolRenderers, ToolResultEvent, ToolResultEventResult, TurnEndEvent, UserBashEvent, UserBashEventResult } from "./types.ts";
++import type { RpcReadyEvent, AgentBeforeSettleEvent, BeforeAgentStartEvent, BeforeAgentStartEventResult, BeforeProviderHeadersEvent, BeforeProviderRequestEvent, BoundaryContextPreview, CacheWarmingDecisionEvent, ContextEvent, ContextWithSystemEvent, EntryRenderer, Extension, ExtensionActions, ExtensionCommandContext, ExtensionCommandContextActions, ExtensionContext, ExtensionContextActions, ExtensionError, ExtensionEvent, ExtensionFlag, ExtensionMode, ExtensionRuntime, ExtensionShortcut, ExtensionToolContext, ExtensionUIContext, InputEvent, InputEventResult, InputSource, LoadExtensionsResult, MarkdownTransformer, MessageEndEvent, MessageRenderer, ProjectTrustContext, ProjectTrustEvent, ProjectTrustEventResult, ProviderConfig, RegisteredTool, ReplacedSessionContext, ResolvedCommand, ResourcesDiscoverEvent, SessionBeforeCompactResult, SessionBeforeForkResult, SessionBeforeSwitchResult, SessionBeforeTreeResult, SessionBoundaryDraft, SessionShutdownEvent, ToolCallEvent, ToolCallEventResult, ToolRenderers, ToolResultEvent, ToolResultEventResult, TurnEndEvent, UserBashEvent, UserBashEventResult } from "./types.ts";
+ /** Combined result from all before_agent_start handlers. */
+ interface BeforeAgentStartCombinedResult {
+     messages: NonNullable<BeforeAgentStartEventResult["message"]>[];
+@@ -21,7 +21,7 @@
+  * Events handled by the generic emit() method.
+  * Events with dedicated emitXxx() methods are excluded for stronger type safety.
+  */
+-type RunnerEmitEvent = Exclude<ExtensionEvent, ToolCallEvent | ProjectTrustEvent | ToolResultEvent | UserBashEvent | ContextEvent | ContextWithSystemEvent | CacheWarmingDecisionEvent | BeforeProviderRequestEvent | BeforeProviderHeadersEvent | BeforeAgentStartEvent | MessageEndEvent | ResourcesDiscoverEvent | InputEvent | TurnEndEvent | AgentBeforeSettleEvent>;
++type RunnerEmitEvent = Exclude<ExtensionEvent, RpcReadyEvent | ToolCallEvent | ProjectTrustEvent | ToolResultEvent | UserBashEvent | ContextEvent | ContextWithSystemEvent | CacheWarmingDecisionEvent | BeforeProviderRequestEvent | BeforeProviderHeadersEvent | BeforeAgentStartEvent | MessageEndEvent | ResourcesDiscoverEvent | InputEvent | TurnEndEvent | AgentBeforeSettleEvent>;
+ type RunnerEmitResult<TEvent extends RunnerEmitEvent> = TEvent extends {
+     type: "session_before_switch";
+ } ? SessionBeforeSwitchResult | undefined : TEvent extends {
+@@ -173,7 +173,7 @@
+      * `tools` and `executeTool()`. `signal` is the default signal of nested calls.
+      */
+     createToolContext(toolCallId: string, signal: AbortSignal | undefined): ExtensionToolContext;
+-    createCommandContext(): ExtensionCommandContext;
++    createCommandContext(commandId?: string, signal?: AbortSignal): ExtensionCommandContext;
+     emitBoundary(baseEvent: BoundaryBaseEvent, buildContext: (entries: SessionBoundaryDraft[]) => BoundaryContextPreview | Promise<BoundaryContextPreview>): Promise<BoundaryDispatchResult>;
+     private isSessionBeforeEvent;
+     emit<TEvent extends RunnerEmitEvent>(event: TEvent): Promise<RunnerEmitResult<TEvent>>;
+@@ -207,6 +207,7 @@
+         }>;
+     }>;
+     /** Emit input event. Transforms chain, "handled" short-circuits. */
++    emitRpcReady(event: RpcReadyEvent): Promise<void>;
+     emitInput(text: string, images: ImageContent[] | undefined, source: InputSource, streamingBehavior?: "steer" | "followUp"): Promise<InputEventResult>;
+ }
+ export {};
+diff --git a/dist/core/extensions/index.d.ts b/dist/core/extensions/index.d.ts
+--- a/dist/core/extensions/index.d.ts
++++ b/dist/core/extensions/index.d.ts
+@@ -6,7 +6,7 @@
+ export { createExtensionRuntime, discoverAndLoadExtensions, loadExtensionFromFactory, loadExtensions, } from "./loader.ts";
+ export type { ExtensionErrorListener, ForkHandler, NavigateTreeHandler, NewSessionHandler, ShutdownHandler, SwitchSessionHandler, } from "./runner.ts";
+ export { ExtensionRunner } from "./runner.ts";
+-export type { AfterProviderResponseEvent, AgentActivityOutcome, AgentBeforeSettleEvent, AgentBeforeSettleEventResult, AgentEndEvent, AgentSettledEvent, AgentStartEvent, AgentToolResult, AgentToolUpdateCallback, AppendEntryHandler, AppKeybinding, AutocompleteProviderFactory, BashToolCallEvent, BashToolResultEvent, BeforeAgentStartEvent, BeforeAgentStartEventResult, BeforeProviderHeadersEvent, BeforeProviderRequestEvent, BeforeProviderRequestEventResult, BoundaryContextPreview, BoundaryResult, BoundaryState, BuildSystemPromptOptions, CacheWarmingDecisionEvent, CacheWarmingDecisionEventResult, CompactionEntryDraft, CompactOptions, ContextEditEntryDraft, ContextEvent, ContextEventResult, ContextUsage, ContextWithSystemEvent, CustomEntryDraft, CustomMessageEntryDraft, CustomToolCallEvent, CustomToolResultEvent, EditorFactory, EditToolCallEvent, EditToolResultEvent, EntryRenderer, EntryRenderOptions, ExecOptions, ExecResult, ExecuteToolOptions, Extension, ExtensionActions, ExtensionAPI, ExtensionCommandContext, ExtensionCommandContextActions, ExtensionContext, ExtensionContextActions, ExtensionError, ExtensionEvent, ExtensionFactory, ExtensionFlag, ExtensionHandler, ExtensionMode, ExtensionRuntime, ExtensionShortcut, ExtensionToolContext, ExtensionUIContext, ExtensionUIDialogOptions, ExtensionVirtualModel, ExtensionWidgetOptions, FindToolCallEvent, FindToolResultEvent, GetActiveToolsHandler, GetAllToolsHandler, GetCommandsHandler, GetThinkingLevelHandler, GrepToolCallEvent, GrepToolResultEvent, InlineExtension, InputEvent, InputEventResult, InputSource, KeybindingsManager, LoadExtensionsResult, LsToolCallEvent, LsToolResultEvent, MarkdownTransformContext, MarkdownTransformer, McpServersChangeEvent, MessageEndEvent, MessageEndEventResult, MessageRenderer, MessageRenderOptions, MessageStartEvent, MessageUpdateEvent, ModelSelectEvent, ModelSelectSource, NormalizedBuildSystemPromptOptions, PowerShellToolCallEvent, PowerShellToolResultEvent, ProjectTrustContext, ProjectTrustEvent, ProjectTrustEventDecision, ProjectTrustEventResult, ProjectTrustHandler, ProviderConfig, ProviderModelConfig, ProviderStreamEvent, ReadToolCallEvent, ReadToolResultEvent, RegisteredCommand, RegisteredTool, ReplacedSessionContext, ResolvedCommand, ResourcesDiscoverEvent, ResourcesDiscoverResult, SendMessageHandler, SendUserMessageHandler, SessionBeforeCompactEvent, SessionBeforeCompactResult, SessionBeforeForkEvent, SessionBeforeForkResult, SessionBeforeSwitchEvent, SessionBeforeSwitchResult, SessionBeforeTreeEvent, SessionBeforeTreeResult, SessionBoundaryDraft, SessionCompactEvent, SessionCompactFailedEvent, SessionEvent, SessionInfoChangedEvent, SessionShutdownEvent, SessionStartEvent, SessionTreeEvent, SetActiveToolsHandler, SetLabelHandler, SetModelHandler, SetThinkingLevelHandler, TerminalInputHandler, ThinkingLevelSelectEvent, ToolAnnotations, ToolCallEvent, ToolCallEventResult, ToolDefinition, ToolExecutionEndEvent, ToolExecutionMode, ToolExecutionStartEvent, ToolExecutionUpdateEvent, ToolExposure, ToolInfo, ToolLoadout, ToolLoadoutChanges, ToolNamespace, ToolRendererResolver, ToolRenderers, ToolRenderResultOptions, ToolResultEvent, ToolResultEventResult, TreePreparation, TurnEndEvent, TurnEndEventResult, TurnStartEvent, UIPromptEndEvent, UIPromptKind, UIPromptStartEvent, UserBashEvent, UserBashEventResult, WidgetPlacement, WorkingIndicatorOptions, WriteToolCallEvent, WriteToolResultEvent, } from "./types.ts";
++export type { RpcReadyEvent, AfterProviderResponseEvent, AgentActivityOutcome, AgentBeforeSettleEvent, AgentBeforeSettleEventResult, AgentEndEvent, AgentSettledEvent, AgentStartEvent, AgentToolResult, AgentToolUpdateCallback, AppendEntryHandler, AppKeybinding, AutocompleteProviderFactory, BashToolCallEvent, BashToolResultEvent, BeforeAgentStartEvent, BeforeAgentStartEventResult, BeforeProviderHeadersEvent, BeforeProviderRequestEvent, BeforeProviderRequestEventResult, BoundaryContextPreview, BoundaryResult, BoundaryState, BuildSystemPromptOptions, CacheWarmingDecisionEvent, CacheWarmingDecisionEventResult, CompactionEntryDraft, CompactOptions, ContextEditEntryDraft, ContextEvent, ContextEventResult, ContextUsage, ContextWithSystemEvent, CustomEntryDraft, CustomMessageEntryDraft, CustomToolCallEvent, CustomToolResultEvent, EditorFactory, EditToolCallEvent, EditToolResultEvent, EntryRenderer, EntryRenderOptions, ExecOptions, ExecResult, ExecuteToolOptions, Extension, ExtensionActions, ExtensionAPI, ExtensionCommandContext, ExtensionCommandContextActions, ExtensionContext, ExtensionContextActions, ExtensionError, ExtensionEvent, ExtensionFactory, ExtensionFlag, ExtensionHandler, ExtensionMode, ExtensionRuntime, ExtensionShortcut, ExtensionToolContext, ExtensionUIContext, ExtensionUIDialogOptions, ExtensionVirtualModel, ExtensionWidgetOptions, FindToolCallEvent, FindToolResultEvent, GetActiveToolsHandler, GetAllToolsHandler, GetCommandsHandler, GetThinkingLevelHandler, GrepToolCallEvent, GrepToolResultEvent, InlineExtension, InputEvent, InputEventResult, InputSource, KeybindingsManager, LoadExtensionsResult, LsToolCallEvent, LsToolResultEvent, MarkdownTransformContext, MarkdownTransformer, McpServersChangeEvent, MessageEndEvent, MessageEndEventResult, MessageRenderer, MessageRenderOptions, MessageStartEvent, MessageUpdateEvent, ModelSelectEvent, ModelSelectSource, NormalizedBuildSystemPromptOptions, PowerShellToolCallEvent, PowerShellToolResultEvent, ProjectTrustContext, ProjectTrustEvent, ProjectTrustEventDecision, ProjectTrustEventResult, ProjectTrustHandler, ProviderConfig, ProviderModelConfig, ProviderStreamEvent, ReadToolCallEvent, ReadToolResultEvent, RegisteredCommand, RegisteredTool, ReplacedSessionContext, ResolvedCommand, ResourcesDiscoverEvent, ResourcesDiscoverResult, SendMessageHandler, SendUserMessageHandler, SessionBeforeCompactEvent, SessionBeforeCompactResult, SessionBeforeForkEvent, SessionBeforeForkResult, SessionBeforeSwitchEvent, SessionBeforeSwitchResult, SessionBeforeTreeEvent, SessionBeforeTreeResult, SessionBoundaryDraft, SessionCompactEvent, SessionCompactFailedEvent, SessionEvent, SessionInfoChangedEvent, SessionShutdownEvent, SessionStartEvent, SessionTreeEvent, SetActiveToolsHandler, SetLabelHandler, SetModelHandler, SetThinkingLevelHandler, TerminalInputHandler, ThinkingLevelSelectEvent, ToolAnnotations, ToolCallEvent, ToolCallEventResult, ToolDefinition, ToolExecutionEndEvent, ToolExecutionMode, ToolExecutionStartEvent, ToolExecutionUpdateEvent, ToolExposure, ToolInfo, ToolLoadout, ToolLoadoutChanges, ToolNamespace, ToolRendererResolver, ToolRenderers, ToolRenderResultOptions, ToolResultEvent, ToolResultEventResult, TreePreparation, TurnEndEvent, TurnEndEventResult, TurnStartEvent, UIPromptEndEvent, UIPromptKind, UIPromptStartEvent, UserBashEvent, UserBashEventResult, WidgetPlacement, WorkingIndicatorOptions, WriteToolCallEvent, WriteToolResultEvent, } from "./types.ts";
+ export { defineTool, isBashToolResult, isEditToolResult, isFindToolResult, isGrepToolResult, isLsToolResult, isPowerShellToolResult, isReadToolResult, isToolCallEventType, isWriteToolResult, } from "./types.ts";
+ export { wrapRegisteredTool, wrapRegisteredTools } from "./wrapper.ts";
+ //# sourceMappingURL=index.d.ts.map
+\ No newline at end of file
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -5,7 +5,7 @@
+ export type { CacheWarmingDecision, CacheWarmingStatus } from "./core/cache-warmer.ts";
+ export { type BranchPreparation, type BranchSummaryResult, type CollectEntriesResult, type CompactionResult, type CutPointResult, calculateContextTokens, collectEntriesForBranchSummary, compact, DEFAULT_COMPACTION_SETTINGS, estimateTokens, type FileOperations, findCutPoint, findTurnStartIndex, type GenerateBranchSummaryOptions, generateBranchSummary, generateSummary, generateSummaryWithUsage, getLastAssistantUsage, prepareBranchEntries, serializeConversation, shouldCompact, } from "./core/compaction/index.ts";
+ export { createEventBus, type EventBus, type EventBusController } from "./core/event-bus.ts";
+-export type { AfterProviderResponseEvent, AgentActivityOutcome, AgentBeforeSettleEvent, AgentBeforeSettleEventResult, AgentEndEvent, AgentSettledEvent, AgentStartEvent, AgentToolResult, AgentToolUpdateCallback, AppKeybinding, AutocompleteProviderFactory, BashToolCallEvent, BeforeAgentStartEvent, BeforeAgentStartEventResult, BeforeProviderHeadersEvent, BeforeProviderRequestEvent, BeforeProviderRequestEventResult, BoundaryContextPreview, BoundaryResult, BoundaryState, BuildSystemPromptOptions, CacheWarmingDecisionEvent, CacheWarmingDecisionEventResult, CompactionEntryDraft, CompactOptions, ContextEditEntryDraft, ContextEvent, ContextEventResult, ContextUsage, ContextWithSystemEvent, CustomEntryDraft, CustomMessageEntryDraft, CustomToolCallEvent, EditToolCallEvent, EntryRenderer, EntryRenderOptions, ExecOptions, ExecResult, ExecuteToolOptions, Extension, ExtensionActions, ExtensionAPI, ExtensionCommandContext, ExtensionCommandContextActions, ExtensionContext, ExtensionContextActions, ExtensionError, ExtensionEvent, ExtensionFactory, ExtensionFlag, ExtensionHandler, ExtensionRuntime, ExtensionShortcut, ExtensionToolContext, ExtensionUIContext, ExtensionUIDialogOptions, ExtensionVirtualModel, ExtensionWidgetOptions, FindToolCallEvent, GrepToolCallEvent, InlineExtension, InputEvent, InputEventResult, InputSource, KeybindingsManager, LoadExtensionsResult, LsToolCallEvent, MarkdownTransformContext, MarkdownTransformer, McpServersChangeEvent, MessageEndEvent, MessageEndEventResult, MessageRenderer, MessageRenderOptions, MessageStartEvent, MessageUpdateEvent, ModelSelectEvent, ModelSelectSource, NormalizedBuildSystemPromptOptions, PowerShellToolCallEvent, ProjectTrustContext, ProjectTrustEvent, ProjectTrustEventDecision, ProjectTrustEventResult, ProjectTrustHandler, ProviderConfig, ProviderModelConfig, ProviderStreamEvent, ReadToolCallEvent, RegisteredCommand, RegisteredTool, ResolvedCommand, ResourcesDiscoverEvent, ResourcesDiscoverResult, SessionBeforeCompactEvent, SessionBeforeCompactResult, SessionBeforeForkEvent, SessionBeforeForkResult, SessionBeforeSwitchEvent, SessionBeforeSwitchResult, SessionBeforeTreeEvent, SessionBeforeTreeResult, SessionBoundaryDraft, SessionCompactEvent, SessionCompactFailedEvent, SessionInfoChangedEvent, SessionShutdownEvent, SessionStartEvent, SessionTreeEvent, SlashCommandInfo, SlashCommandSource, SourceInfo, TerminalInputHandler, ThinkingLevelSelectEvent, ToolAnnotations, ToolCallEvent, ToolCallEventResult, ToolDefinition, ToolExecutionEndEvent, ToolExecutionMode, ToolExecutionStartEvent, ToolExecutionUpdateEvent, ToolExposure, ToolInfo, ToolLoadout, ToolLoadoutChanges, ToolNamespace, ToolRendererResolver, ToolRenderers, ToolRenderResultOptions, ToolResultEvent, ToolResultEventResult, TurnEndEvent, TurnEndEventResult, TurnStartEvent, UIPromptEndEvent, UIPromptKind, UIPromptStartEvent, UserBashEvent, UserBashEventResult, WidgetPlacement, WorkingIndicatorOptions, WriteToolCallEvent, } from "./core/extensions/index.ts";
++export type { RpcReadyEvent, AfterProviderResponseEvent, AgentActivityOutcome, AgentBeforeSettleEvent, AgentBeforeSettleEventResult, AgentEndEvent, AgentSettledEvent, AgentStartEvent, AgentToolResult, AgentToolUpdateCallback, AppKeybinding, AutocompleteProviderFactory, BashToolCallEvent, BeforeAgentStartEvent, BeforeAgentStartEventResult, BeforeProviderHeadersEvent, BeforeProviderRequestEvent, BeforeProviderRequestEventResult, BoundaryContextPreview, BoundaryResult, BoundaryState, BuildSystemPromptOptions, CacheWarmingDecisionEvent, CacheWarmingDecisionEventResult, CompactionEntryDraft, CompactOptions, ContextEditEntryDraft, ContextEvent, ContextEventResult, ContextUsage, ContextWithSystemEvent, CustomEntryDraft, CustomMessageEntryDraft, CustomToolCallEvent, EditToolCallEvent, EntryRenderer, EntryRenderOptions, ExecOptions, ExecResult, ExecuteToolOptions, Extension, ExtensionActions, ExtensionAPI, ExtensionCommandContext, ExtensionCommandContextActions, ExtensionContext, ExtensionContextActions, ExtensionError, ExtensionEvent, ExtensionFactory, ExtensionFlag, ExtensionHandler, ExtensionRuntime, ExtensionShortcut, ExtensionToolContext, ExtensionUIContext, ExtensionUIDialogOptions, ExtensionVirtualModel, ExtensionWidgetOptions, FindToolCallEvent, GrepToolCallEvent, InlineExtension, InputEvent, InputEventResult, InputSource, KeybindingsManager, LoadExtensionsResult, LsToolCallEvent, MarkdownTransformContext, MarkdownTransformer, McpServersChangeEvent, MessageEndEvent, MessageEndEventResult, MessageRenderer, MessageRenderOptions, MessageStartEvent, MessageUpdateEvent, ModelSelectEvent, ModelSelectSource, NormalizedBuildSystemPromptOptions, PowerShellToolCallEvent, ProjectTrustContext, ProjectTrustEvent, ProjectTrustEventDecision, ProjectTrustEventResult, ProjectTrustHandler, ProviderConfig, ProviderModelConfig, ProviderStreamEvent, ReadToolCallEvent, RegisteredCommand, RegisteredTool, ResolvedCommand, ResourcesDiscoverEvent, ResourcesDiscoverResult, SessionBeforeCompactEvent, SessionBeforeCompactResult, SessionBeforeForkEvent, SessionBeforeForkResult, SessionBeforeSwitchEvent, SessionBeforeSwitchResult, SessionBeforeTreeEvent, SessionBeforeTreeResult, SessionBoundaryDraft, SessionCompactEvent, SessionCompactFailedEvent, SessionInfoChangedEvent, SessionShutdownEvent, SessionStartEvent, SessionTreeEvent, SlashCommandInfo, SlashCommandSource, SourceInfo, TerminalInputHandler, ThinkingLevelSelectEvent, ToolAnnotations, ToolCallEvent, ToolCallEventResult, ToolDefinition, ToolExecutionEndEvent, ToolExecutionMode, ToolExecutionStartEvent, ToolExecutionUpdateEvent, ToolExposure, ToolInfo, ToolLoadout, ToolLoadoutChanges, ToolNamespace, ToolRendererResolver, ToolRenderers, ToolRenderResultOptions, ToolResultEvent, ToolResultEventResult, TurnEndEvent, TurnEndEventResult, TurnStartEvent, UIPromptEndEvent, UIPromptKind, UIPromptStartEvent, UserBashEvent, UserBashEventResult, WidgetPlacement, WorkingIndicatorOptions, WriteToolCallEvent, } from "./core/extensions/index.ts";
+ export { createExtensionRuntime, defineTool, discoverAndLoadExtensions, ExtensionRunner, isBashToolResult, isEditToolResult, isFindToolResult, isGrepToolResult, isLsToolResult, isPowerShellToolResult, isReadToolResult, isToolCallEventType, isWriteToolResult, wrapRegisteredTool, wrapRegisteredTools, } from "./core/extensions/index.ts";
+ export type { ReadonlyFooterDataProvider } from "./core/footer-data-provider.ts";
+ export type { RegisteredMcpServer } from "./core/mcp-servers.ts";
+diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
+--- a/dist/core/agent-session.js
++++ b/dist/core/agent-session.js
+@@ -124,6 +124,7 @@
+     _lastAssistantMessage;
+     _lastAssistantToolResults = [];
+     _lastActivityOutcome = "completed";
++    _beforeSettleAbortController = undefined;
+     _isBeforeSettle = false;
+     _abortDuringBeforeSettle = false;
+     _isEmittingAgentSettled = false;
+@@ -164,6 +165,7 @@
+     _toolRegistry = new Map();
+     /** Created on the first `ctx.executeTool()` call. */
+     _nestedToolCalls;
++    _commandToolScopes = new Map();
+     /** Declared tools whose declarations requests leave out, from `prepareLoadout` hooks. */
+     _hiddenDeclarations = new Set();
+     _toolDefinitions = new Map();
+@@ -384,12 +386,25 @@
+      * through the agent's tool pipeline with the session's hooks, against the callable tools.
+      */
+     async _executeNestedToolCall(parentToolCallId, name, args, options) {
++        const commandScope = this._commandToolScopes.get(parentToolCallId.split("/")[0]);
++        const refused = () => ({ toolCall: { type: "toolCall", id: `${parentToolCallId}/0`, name, arguments: args ?? {} }, result: { content: [{ type: "text", text: "Command tool scope is closed or cancelled" }], details: {} }, isError: true });
++        if (parentToolCallId.startsWith("command:")) {
++            if (!commandScope || commandScope.runner !== this._extensionRunner || commandScope.controller.signal.aborted) return refused();
++            options = { ...options, signal: AbortSignal.any([commandScope.controller.signal, ...(options?.signal ? [options.signal] : [])]) };
++        }
+         this._nestedToolCalls ??= new NestedToolCallRunner({
+             getTools: () => this._getCallableTools(),
+             isSequential: () => this.agent.toolExecution === "sequential",
+             runToolCall: (toolCall, parentId, signal, onUpdate) => {
+-                const assistantMessage = this._findLastAssistantMessage();
+-                if (!assistantMessage) {
++                const fromCommand = parentId.startsWith("command:");
++                const scope = this._commandToolScopes.get(parentId.split("/")[0]);
++                if (fromCommand && (!scope || scope.runner !== this._extensionRunner || scope.controller.signal.aborted || signal?.aborted)) {
++                    return Promise.resolve({ toolCall, result: { content: [{ type: "text", text: "Command tool scope is closed or cancelled" }], details: {} }, isError: true });
++                }
++                // The shared pipeline uses this only as hook metadata. Session
++                // tool hooks consume the call/args, never a synthetic assistant.
++                const assistantMessage = fromCommand ? undefined : this._findLastAssistantMessage();
++                if (!fromCommand && !assistantMessage) {
+                     return Promise.resolve({
+                         toolCall,
+                         result: { content: [{ type: "text", text: "No assistant message issued this call" }], details: {} },
+@@ -411,8 +426,16 @@
+                 this._emit(event);
+             },
+         });
+-        return this._nestedToolCalls.execute(parentToolCallId, name, args, options);
++        const execution = this._nestedToolCalls.execute(parentToolCallId, name, args, options);
++        commandScope?.pending.add(execution);
++        try { return await execution; }
++        finally { commandScope?.pending.delete(execution); }
+     }
++    async _abortCommandTools() {
++        const scopes = [...this._commandToolScopes.values()];
++        for (const scope of scopes) scope.controller.abort();
++        await Promise.allSettled(scopes.flatMap(scope => [...scope.pending]));
++    }
+     /** Whether `projection`, the current session projection, exceeds the compaction threshold of `model`. */
+     _exceedsCompactionThreshold(model, projection) {
+         if (model.contextWindow <= 0)
+@@ -680,12 +703,15 @@
+         resolve();
+     }
+     async _emitAgentSettled() {
++        // Capture this run before awaited settlement handlers or deferred work
++        // can start another run and reset its cancellation state.
++        const aborted = this._agentRunAbortRequested || this._lastActivityOutcome === "aborted";
+         this._cacheWarmer?.onAgentSettled();
+         this._isAgentRunActive = false;
+         this._isEmittingAgentSettled = true;
+         try {
+-            await this._extensionRunner.emit({ type: "agent_settled" });
+-            this._emit({ type: "agent_settled" });
++            await this._extensionRunner.emit({ type: "agent_settled", aborted });
++            this._emit({ type: "agent_settled", aborted });
+         }
+         finally {
+             this._isEmittingAgentSettled = false;
+@@ -717,7 +743,7 @@
+                 }
+             }
+             else if (event.type === "agent_end") {
+-                this._nestedToolCalls.clear();
++                this._nestedToolCalls.clear(id => this._commandToolScopes.has(id.split("/")[0]));
+             }
+         }
+         // When a user message starts, check if it's from either queue and remove it BEFORE emitting
+@@ -987,6 +1013,10 @@
+      */
+     dispose() {
+         try {
++            for (const scope of this._commandToolScopes.values()) scope.controller.abort();
++            this._commandToolScopes.clear();
++            this._abortDuringBeforeSettle = true;
++            this._beforeSettleAbortController?.abort();
+             this.abortRetry();
+             this.abortCompaction();
+             this.abortBranchSummary();
+@@ -1375,6 +1405,7 @@
+     // =========================================================================
+     async _runAgentPrompt(messages) {
+         this._agentRunAbortRequested = false;
++        this._lastActivityOutcome = "completed";
+         // Compaction before the prompt may have scheduled a retry; the new prompt replaces it.
+         this._failedResponse = undefined;
+         this._recordSelection();
+@@ -1449,9 +1480,12 @@
+         if (!this._extensionRunner.hasHandlers("agent_before_settle"))
+             return this.agent.hasQueuedMessages();
+         this._isBeforeSettle = true;
+-        this._abortDuringBeforeSettle = false;
++        this._abortDuringBeforeSettle = this._agentRunAbortRequested;
++        const controller = new AbortController();
++        this._beforeSettleAbortController = controller;
++        if (this._abortDuringBeforeSettle) controller.abort();
+         try {
+-            const result = await this._extensionRunner.emitBoundary({ type: "agent_before_settle", outcome: this._lastActivityOutcome }, (entries) => this._buildBoundaryContext(entries, "agent_before_settle"));
++            const result = await this._extensionRunner.emitBoundary({ type: "agent_before_settle", signal: controller.signal, outcome: this._lastActivityOutcome }, (entries) => this._buildBoundaryContext(entries, "agent_before_settle"));
+             this._commitBoundaryDrafts(result.entries);
+             this._flushPendingCustomMessages();
+             const finalContext = this._buildBoundaryContext([], "agent_before_settle");
+@@ -1466,6 +1500,7 @@
+             return shouldContinue;
+         }
+         finally {
++            this._beforeSettleAbortController = undefined;
+             this._isBeforeSettle = false;
+         }
+     }
+@@ -1638,7 +1673,10 @@
+         if (!command)
+             return false;
+         // Get command context from extension runner (includes session control methods)
+-        const ctx = this._extensionRunner.createCommandContext();
++        const commandId = `command:${globalThis.crypto.randomUUID()}`;
++        const scope = { controller: new AbortController(), pending: new Set(), runner: this._extensionRunner };
++        this._commandToolScopes.set(commandId, scope);
++        const ctx = this._extensionRunner.createCommandContext(commandId, scope.controller.signal);
+         try {
+             await command.handler(args, ctx);
+             return true;
+@@ -1652,6 +1690,12 @@
+             });
+             return true;
+         }
++        finally {
++            this._commandToolScopes.delete(commandId);
++            scope.controller.abort();
++            await Promise.allSettled([...scope.pending]);
++            this._nestedToolCalls?.takeRecord(commandId);
++        }
+     }
+     /**
+      * Expand skill commands (/skill:name args) to their full content.
+@@ -1909,9 +1953,12 @@
+         this.abortRetry();
+         this.abortCompaction();
+         this.abortBranchSummary();
+-        if (this._isBeforeSettle)
++        if (this._isBeforeSettle) {
+             this._abortDuringBeforeSettle = true;
++            this._beforeSettleAbortController?.abort();
++        }
+         this.agent.abort();
++        await this._abortCommandTools();
+         await this.waitForIdle();
+     }
+     async waitForIdle() {
+@@ -2930,6 +2977,7 @@
+         });
+     }
+     async reload(options) {
++        await this._abortCommandTools();
+         const oldRunner = this._extensionRunner;
+         const previousFlagValues = oldRunner.getFlagValues();
+         await emitSessionShutdownEvent(oldRunner, { type: "session_shutdown", reason: "reload" });
+diff --git a/dist/core/agent-session.d.ts b/dist/core/agent-session.d.ts
+--- a/dist/core/agent-session.d.ts
++++ b/dist/core/agent-session.d.ts
+@@ -52,6 +52,8 @@
+     willRetry: boolean;
+ } | {
+     type: "agent_settled";
++    /** True only when the settled native run was aborted. */
++    aborted: boolean;
+ } | {
+     type: "queue_update";
+     steering: readonly string[];
+@@ -249,6 +251,7 @@
+     private _lastAssistantMessage;
+     private _lastAssistantToolResults;
+     private _lastActivityOutcome;
++    private _beforeSettleAbortController;
+     private _isBeforeSettle;
+     private _abortDuringBeforeSettle;
+     private _isEmittingAgentSettled;
+@@ -288,6 +291,8 @@
+     private _toolRegistry;
+     /** Created on the first `ctx.executeTool()` call. */
+     private _nestedToolCalls;
++    private _commandToolScopes;
++    private _abortCommandTools;
+     /** Declared tools whose declarations requests leave out, from `prepareLoadout` hooks. */
+     private _hiddenDeclarations;
+     private _toolDefinitions;
+diff --git a/dist/core/nested-tool-calls.js b/dist/core/nested-tool-calls.js
+--- a/dist/core/nested-tool-calls.js
++++ b/dist/core/nested-tool-calls.js
+@@ -171,8 +171,10 @@
+             return undefined;
+         return { calls: scope.recorder.snapshot(), usage: scope.recorder.totalUsage };
+     }
+-    clear() {
+-        this.scopes.clear();
++    clear(keep) {
++        for (const id of this.scopes.keys()) {
++            if (!keep?.(id)) this.scopes.delete(id);
++        }
+     }
+ }
+ //# sourceMappingURL=nested-tool-calls.js.map
+\ No newline at end of file
+diff --git a/dist/core/nested-tool-calls.d.ts b/dist/core/nested-tool-calls.d.ts
+--- a/dist/core/nested-tool-calls.d.ts
++++ b/dist/core/nested-tool-calls.d.ts
+@@ -97,6 +97,6 @@
+     execute(callerId: string, name: string, args: unknown, options?: NestedToolCallOptions): Promise<AgentToolCallOutcome>;
+     /** Remove and return the record of the nested calls a model-issued call made. */
+     takeRecord(toolCallId: string): NestedCallSummary | undefined;
+-    clear(): void;
++    clear(keep?: (callerId: string) => boolean): void;
+ }
+ //# sourceMappingURL=nested-tool-calls.d.ts.map
+\ No newline at end of file
+diff --git a/node_modules/@earendil-works/pi-agent-core/dist/agent-loop.d.ts b/node_modules/@earendil-works/pi-agent-core/dist/agent-loop.d.ts
+--- a/node_modules/@earendil-works/pi-agent-core/dist/agent-loop.d.ts
++++ b/node_modules/@earendil-works/pi-agent-core/dist/agent-loop.d.ts
+@@ -28,8 +28,8 @@
+ export interface RunToolCallOptions extends ToolCallHooks {
+     /** Tools the call resolves against. */
+     tools: readonly AgentTool<any>[];
+-    /** Passed to the hooks as the message that issued the call. */
+-    assistantMessage: AssistantMessage;
++    /** Model-issued call metadata; absent for command-origin execution. */
++    assistantMessage?: AssistantMessage;
+     /** Passed to the hooks as the current agent context. */
+     context: AgentContext;
+     signal?: AbortSignal;
+diff --git a/node_modules/@earendil-works/pi-agent-core/dist/types.d.ts b/node_modules/@earendil-works/pi-agent-core/dist/types.d.ts
+--- a/node_modules/@earendil-works/pi-agent-core/dist/types.d.ts
++++ b/node_modules/@earendil-works/pi-agent-core/dist/types.d.ts
+@@ -81,9 +81,9 @@
+ }
+ /** Context passed to `beforeToolCall`. */
+ export interface BeforeToolCallContext {
+-    /** The assistant message that requested the tool call. */
+-    assistantMessage: AssistantMessage;
+-    /** The raw tool call block from `assistantMessage.content`. */
++    /** The requesting assistant, absent for command-origin execution. */
++    assistantMessage?: AssistantMessage;
++    /** The tool call being executed. */
+     toolCall: AgentToolCall;
+     /** Validated tool arguments for the target tool schema. */
+     args: unknown;
+@@ -92,9 +92,9 @@
+ }
+ /** Context passed to `afterToolCall`. */
+ export interface AfterToolCallContext {
+-    /** The assistant message that requested the tool call. */
+-    assistantMessage: AssistantMessage;
+-    /** The raw tool call block from `assistantMessage.content`. */
++    /** The requesting assistant, absent for command-origin execution. */
++    assistantMessage?: AssistantMessage;
++    /** The tool call being executed. */
+     toolCall: AgentToolCall;
+     /** Validated tool arguments for the target tool schema. */
+     args: unknown;

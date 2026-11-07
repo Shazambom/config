@@ -106,6 +106,8 @@ retire disproven advice rather than accumulating contradictions. Keep general
 rules here and feature details in the linked record.
 
 Feature index:
+- [Pi complaints](docs/lessons/pi-complaints.md): human approval, shared storage,
+  newest-report selection, immutable outcomes, and manual skill verification.
 - [Grafana log routing](docs/lessons/grafana-log-routing.md): codebase ownership,
   Alloy label schemas, live inventory, Faro parsing, and skill deployment.
 - [Codex MCP import](docs/lessons/codex-mcp.md): private Pi-to-Codex conversion,
@@ -114,14 +116,26 @@ Feature index:
   scoped exceptions, level coverage, and safe skill migrations.
 - [Pi workflow resolution](docs/lessons/pi-workflow-resolution.md): slash lookup,
   manual-only skills, native expansion, and installed-runtime regression tests.
+- [Pi subagent completion](docs/lessons/pi-subagent-completion.md): durable shell
+  receipts, terminal-marker loss, completion delivery, and pane cleanup.
+- [Pi subagent capacity](docs/lessons/pi-subagent-capacity.md): burst pane layout,
+  structured refusal, native SDK errors, and active-CLI discovery.
 - [Pi subagent models](docs/lessons/pi-subagent-models.md): complete credential-backed
   model discovery, provider grouping, and inference verification limits.
 - [Pi Command shortcuts](docs/lessons/pi-command-shortcuts.md): fullscreen
   selection, iTerm2/tmux key routing, clipboard isolation, and session-local maps.
 - [Pi path completion](docs/lessons/pi-path-completion.md): stale-menu acceptance,
   version-gated native and bundle patches, and active-CLI regression checks.
+- [Pi task cues](docs/lessons/pi-task-cues.md): root-only advisory context, observed
+  recovery, coverage labels, Unicode escaping and isolated runtime proof.
 - [Pi wakeups](docs/lessons/pi-wakeups.md): timer/command runtime, calendar and
   process-cleanup limits, model qualification, failure controls, and deployment.
+- [Pi RPC readiness](docs/lessons/pi-rpc-readiness.md): request admission,
+  cancellation-safe settlement, command tool scopes and verified native deployment.
+- [Pi delivery](docs/lessons/pi-delivery.md): explicit checked setup, receipt
+  identity, observer failures, cancellation uncertainty and runtime proof.
+- [Pi T3 integration](docs/lessons/pi-t3-integration.md): opt-in RPC adaptation,
+  native child admission, completion acknowledgement, arena and actual-host tests.
 - [Pi session lifecycle](docs/lessons/pi-session-lifecycle.md): saved-session
   ownership, terminal loss, worker shutdown, startup replay, failure handling,
   and isolated deployment verification.

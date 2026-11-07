@@ -11,7 +11,7 @@
   "enableSkillCommands": true,
   "skills": ["~/.claude/skills"],
   "prompts": [],
-  "extensions": ["./lifecycle/session-lifecycle.ts", "./wakeups/index.ts", "-builtin:mcp"],
+  "extensions": ["./lifecycle/session-lifecycle.ts", "./task-cues/index.ts", "./wakeups/index.ts", "-builtin:mcp"],
   "compaction": {
     "enabled": true,
     "reserveTokens": 128000,
@@ -25,8 +25,8 @@
     },
     "tailTokens": 40000,
     "models": {
-      "observer": { "provider": "openai-codex", "id": "gpt-5.6-sol", "thinking": "medium" },
-      "consolidator": { "provider": "openai-codex", "id": "gpt-5.6-sol", "thinking": "medium" }
+      "observer": { "provider": "openai-codex", "id": "gpt-6.1-sol", "thinking": "medium" },
+      "consolidator": { "provider": "openai-codex", "id": "gpt-6.1-sol", "thinking": "medium" }
     }
   },
   "piVimMode": {

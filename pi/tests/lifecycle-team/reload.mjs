@@ -21,7 +21,7 @@ try {
     const hooks = new Map(), bus = new EventEmitter();
     let active = [], shutdowns = 0;
     const ctx = { sessionManager: { getSessionId: () => reason, getEntries: () => [] }, isIdle: () => true, hasPendingMessages: () => false, shutdown: () => { shutdowns++; } };
-    extension({ on: (n, fn) => hooks.set(n, fn), events: { emit: (n, v) => bus.emit(n, v), on: (n, fn) => { bus.on(n, fn); return () => bus.off(n, fn); } }, registerTool() {}, registerCommand() {}, getActiveTools: () => active, setActiveTools: value => { active = value; } });
+    extension({ on: (n, fn) => hooks.set(n, fn), events: { emit: (n, v) => bus.emit(n, v), on: (n, fn) => { bus.on(n, fn); return () => bus.off(n, fn); } }, registerFlag() {}, getFlag() { return false; }, registerTool() {}, registerCommand() {}, getActiveTools: () => active, setActiveTools: value => { active = value; } });
     await hooks.get('session_start')({ reason: 'startup' }, ctx);
     const old = store.state().members.worker;
     const child = spawn(process.execPath, ['-e', 'process.stdout.write("ready");setInterval(()=>{},1000)'], { stdio: ['ignore', 'pipe', 'inherit'] });

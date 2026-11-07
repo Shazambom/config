@@ -15,7 +15,14 @@ export type SessionLifecycleAdmission =
   | { readonly managed: true; readonly status: 'unprotected'; readonly reason: string; readonly diagnostic?: string };
 export interface SessionLifecycleAdmissionRequest { respond: (admission: SessionLifecycleAdmission) => void }
 type DeferredStartup = { sessionFile: string; generation: string; complete?: () => void; input?: { text: string; images?: InputEvent['images'] } };
-type State = { terminalWarning?: string; freshCommand?: ReturnType<typeof setImmediate>; deferredStartup?: DeferredStartup; awaitingFresh?: boolean; switching?: { file: string; generation: string; shutdown: boolean }; file?: string; canonicalFile?: string; generation?: string; child?: ChildProcess; mode: 'pending' | 'owned' | 'conflict' | 'stopping' | 'failed' | 'stateless'; diagnostic?: string; failure?: string; investigated?: boolean; onMessage?: (message: any) => Promise<void> };
+type RpcReadiness = { promise: Promise<void>; resolve: () => void; reject: (error: Error) => void };
+function rpcReadiness(): RpcReadiness {
+  let resolve!: () => void, reject!: (error: Error) => void;
+  const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+  promise.catch(() => {}); // A transition may fail before any RPC request waits.
+  return { promise, resolve, reject };
+}
+type State = { rpcReady?: RpcReadiness; terminalWarning?: string; freshCommand?: ReturnType<typeof setImmediate>; deferredStartup?: DeferredStartup; awaitingFresh?: boolean; switching?: { file: string; generation: string; shutdown: boolean }; file?: string; canonicalFile?: string; generation?: string; child?: ChildProcess; mode: 'pending' | 'owned' | 'conflict' | 'stopping' | 'failed' | 'stateless'; diagnostic?: string; failure?: string; investigated?: boolean; onMessage?: (message: any) => Promise<void> };
 const globals = globalThis as typeof globalThis & { [key]?: State };
 
 const INIT_DEADLINE_MS = 2000;
@@ -65,6 +72,10 @@ export default function sessionLifecycle(pi: ExtensionAPI) {
     try { return realpathSync(file) === state.canonicalFile; } catch { return false; }
   }
   const blocked = () => state.mode === 'pending' || state.mode === 'conflict' || state.mode === 'stopping';
+  pi.on('rpc_ready', async () => {
+    if (state.rpcReady) await state.rpcReady.promise;
+    if (blocked()) throw new Error('Session ownership unresolved; RPC request was not dispatched.');
+  });
   function cancelFreshCommand() {
     if (state.freshCommand) clearImmediate(state.freshCommand);
     state.freshCommand = undefined;
@@ -81,6 +92,7 @@ export default function sessionLifecycle(pi: ExtensionAPI) {
     });
   }
   function discardStartup() {
+    state.rpcReady?.reject(new Error('Session ownership transition cancelled.'));
     cancelFreshCommand();
     const deferred = state.deferredStartup;
     state.deferredStartup = undefined;
@@ -151,7 +163,9 @@ export default function sessionLifecycle(pi: ExtensionAPI) {
     handler: async (_args, ctx) => {
       if (state.mode !== 'pending' || !state.awaitingFresh || state.switching || !state.file || !state.canonicalFile || !state.generation || !state.child?.connected) return;
       const deferred = state.deferredStartup;
-      state.switching = { file: state.canonicalFile, generation: state.generation, shutdown: false };
+      const readiness = state.rpcReady;
+      const expected = { file: state.canonicalFile, generation: state.generation };
+      state.switching = { ...expected, shutdown: false };
       try {
         await ctx.switchSession(state.file, { withSession: async fresh => {
           if (state.mode !== 'owned' || !deferred?.input || deferred !== state.deferredStartup ||
@@ -165,7 +179,15 @@ export default function sessionLifecycle(pi: ExtensionAPI) {
             await fresh.sendUserMessage([{ type: 'text', text: input.text }, ...(input.images ?? [])], { deliverAs: 'followUp', expandPromptTemplates: false });
           } catch { fresh.ui.notify('Deferred startup task could not be delivered. Submit it again if needed.', 'error'); }
         } });
-      } catch { ctx.ui.notify('Fresh session reload failed. Retry /lifecycle-fresh-owner if admission is still pending, or quit.', 'error'); }
+        if (state.mode !== 'owned' || state.canonicalFile !== expected.file || state.generation !== expected.generation || !state.child?.connected) {
+          throw new Error('Fresh session ownership was not verified.');
+        }
+        readiness?.resolve();
+      } catch {
+        readiness?.reject(new Error('Fresh session reload failed; RPC request was not dispatched.'));
+        // A failed replacement may already have invalidated the command context.
+        if (!readiness) ctx.ui.notify('Fresh session reload failed. Retry /lifecycle-fresh-owner if admission is still pending, or quit.', 'error');
+      }
       finally {
         state.switching = undefined;
         if (state.deferredStartup === deferred) state.deferredStartup = undefined;
@@ -174,6 +196,12 @@ export default function sessionLifecycle(pi: ExtensionAPI) {
     },
   });
   pi.on('session_start', async (event, ctx) => {
+    if (ctx.mode === 'rpc' && ctx.rpcReadiness !== true) {
+      state.mode = 'stopping';
+      ctx.ui.notify('Pi RPC readiness support is missing. Install the repository-supported Pi runtime before using guarded RPC.', 'error');
+      ctx.shutdown();
+      return;
+    }
     const file = ctx.sessionManager.getSessionFile();
     const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent');
     state.onMessage = async message => {
@@ -321,7 +349,10 @@ export default function sessionLifecycle(pi: ExtensionAPI) {
         state.generation = result.generation;
         state.awaitingFresh = continued || result.recovered === true;
         state.mode = state.awaitingFresh ? 'pending' : 'owned';
-        state.deferredStartup = state.awaitingFresh && event.reason === 'startup'
+        if (state.awaitingFresh && ctx.mode === 'rpc') state.rpcReady = rpcReadiness();
+        // RPC now holds the original request before dispatch, including commands
+        // and metadata writes. Only terminal/print startup still needs replay.
+        state.deferredStartup = state.awaitingFresh && ctx.mode !== 'rpc' && event.reason === 'startup'
           ? { sessionFile: result.sessionFile, generation: result.generation } : undefined;
         child.on('message', message => { void state.onMessage?.(message); });
         child.on('exit', () => {

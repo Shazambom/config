@@ -47,7 +47,8 @@ const server = createServer(async (req, res) => {
     if (!call && !busyWindow) {
       // Keep an actual provider turn in flight across several interval deadlines.
       busyWindow = { start: mono() };
-      await pause(11000);
+      const deadline = busyWindow.start + 11000;
+      do { await pause(Math.max(1, Math.ceil(deadline - mono()))); } while (mono() < deadline);
       busyWindow.end = mono();
       record('busy-window.json', busyWindow);
     }
@@ -110,12 +111,15 @@ try {
   assert.equal(new Set(committed.map(e => `${e.job_id}/${e.due_at}`)).size, committed.length, 'no duplicate saved delivery for a timer occurrence');
   assert.ok(busyWindow.end - busyWindow.start >= 11000, 'actual provider turn stayed busy across at least three ticks');
   const duringBusy = requests.filter(r => r.mono > busyWindow.start && r.mono < busyWindow.end);
-  assert.equal(duringBusy.length, 0, 'busy follow-up must not interrupt original turn');
+  assert.equal(duringBusy.length, 0, 'steering must not interrupt the in-flight provider request');
   const following = requests.find(r => r.mono > busyWindow.end);
   assert.ok(following?.body.messages.some(m => m.role === 'user' && text(m).includes(originalTask)), 'original user task survives follow-up');
-  // Inspect independently by monotonic delivery: only one recurrence can be flushed at settlement.
+  // The submitted first tick cannot be recalled. Later ticks share one pending slot.
+  // At the boundary, message_end releases that slot and flushes only the latest tick.
   const immediate = observations().filter(o => o.event.type === 'message_end' && o.event.message.role === 'custom' && o.event.message.details?.job_id === receipts.get('repeat').job_id && o.mono >= busyWindow.end && o.mono < busyWindow.end + 500);
-  assert.equal(immediate.length, 1, 'busy recurring ticks coalesce to one follow-up rather than a backlog');
+  assert.equal(immediate.length, 2, 'one submitted plus one coalesced pending tick, not a missed-tick backlog');
+  assert.ok(Date.parse(immediate[1].event.message.details.due_at) - Date.parse(immediate[0].event.message.details.due_at) >= 6000,
+    'intermediate ticks are coalesced rather than replayed');
   const repeating = wakes.filter(e => e.job_id === receipts.get('repeat').job_id);
   assert.ok(repeating.length >= 3, 'at least three automatic interval events without rearming');
   assert.ok(repeating.every(e => e.reminder === calls[0][2].reminder && e.schedule_kind === 'every'));

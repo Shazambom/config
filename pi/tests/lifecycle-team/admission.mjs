@@ -17,6 +17,7 @@ async function fixture(name, initial) {
   const api = {
     on: (name, callback) => handlers.set(name, callback),
     events: { on: (name, callback) => { emitter.on(name, callback); return () => emitter.off(name, callback); }, emit: (name, value) => emitter.emit(name, value) },
+    registerFlag() {}, getFlag() { return false; },
     registerTool: tool => tools.set(tool.name, tool), registerCommand: (name, command) => commands.set(name, command),
     getActiveTools: () => active, setActiveTools: value => { active = value; },
     sendMessage: () => { deliveries++; }, appendEntry: () => { entries++; },

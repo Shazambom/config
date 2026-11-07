@@ -31,6 +31,7 @@ const pi = {
     on: (name, callback) => { emitter.on(name, callback); return () => emitter.off(name, callback); },
     emit: (name, value) => emitter.emit(name, value),
   },
+  registerFlag() {}, getFlag() { return false; },
   registerTool() {}, registerCommand() {},
   getActiveTools: () => tools,
   setActiveTools: value => { tools = value; },

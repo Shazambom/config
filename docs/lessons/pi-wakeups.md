@@ -152,3 +152,24 @@ remaining actionable issue. Neither review substitutes for execution.
 Execution proof is macOS, Pi 1.0.4, Node 22.23.2. No universal exactly-once delivery,
 suspend behavior, Linux execution, hostile-process containment, or full production
 tool-inventory model reliability is claimed.
+
+## Live T3 busy versus idle diagnosis
+
+A live T3 diagnostic reproduced a recurring timer advancing `next_at` during one
+continuous busy run, followed by cancellation before the run ended and no saved
+wake notice. `runtime.mjs` advances that deadline in its timer callback, holds
+recurring dispatch while `busy`, releases on `agent_end`, and clears pending local
+notices on cancellation. This behavior is before T3 rendering and is shared with
+terminal Pi; it does not establish that the historical reported timer fired.
+
+An idle control in the same diagnostic thread recorded the real `custom_message`
+wake entry, autonomous model response with the exact marker, and cancellation of
+the registered job. Both diagnostic timers were cancelled. Thus the tested T3
+idle route works; registration and `cancelled_future_only` alone still prove
+neither submission nor model consumption.
+
+Inspect persisted `custom_message` entries, not only `message` entries with a
+custom role. Calibrate the extraction against a known delivered notice before
+claiming absence. Changing recurring reminders from idle-only dispatch to a safe
+boundary during ongoing work is a behavior decision requiring approval and a
+regression proving that original work is not lost or cancelled.

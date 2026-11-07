@@ -59,6 +59,33 @@ extra files, symlinks, and commands.
   artifact-design and artifact-diagramming skills for any agent and host, and adds
   lessons from tracing a real run. Invoke with `/skill:artifact`.
 
+- Repository-authored: `complaint` and `address-complaint`, manual-only harness
+  feedback workflows. `/skill:complaint` shows a draft in chat and saves the exact
+  report only after explicit human approval. `/skill:address-complaint` selects
+  the newest approved report automatically and investigates it in the verified
+  Pi source checkout, not the complaint's origin project.
+
+## Approved harness complaints
+
+Reports live in `~/.pi/complaints/` across projects. Nothing creates that store
+until an approved report is saved. Ordinary session history/memory is separate.
+Each private JSON report contains its approved Markdown body, creation time,
+origin and approval quote. Outcomes are separate files, so addressing a report
+cannot make an older complaint appear newest. Tied creation times require a
+choice; an already-resolved newest report is shown instead of silently falling
+back to older work. There is no background collection or queue processor.
+
+The bundled helper validates records, not human consent. The agent must check the
+conversation before saving; merely approving installation of these workflows is
+not approval of a complaint. Do not put real complaints or credentials in Git.
+
+Run `bash claude/test-complaints.sh` for the real file lifecycle and refusal paths,
+and `bash claude/test-complaint-skills.sh` for installed-Pi discovery, native
+expansion, short-name lookup and manual catalog exclusion. Tests use private
+homes. They do not file real complaints or prove universal model compliance.
+
+## Import notes
+
 There were no destination name collisions in this snapshot. Only skills and
 commands were imported, not Claude settings, sessions, credentials, or MCP config.
 The bundle contains Flossy-specific workflow descriptions and an API endpoint;

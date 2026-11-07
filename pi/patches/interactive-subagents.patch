@@ -1,19 +1,33 @@
 diff --git a/pi-extension/subagents/index.ts b/pi-extension/subagents/index.ts
-index 7e20a0f..66bdef1 100644
+index 7e20a0f..8052297 100644
 --- a/pi-extension/subagents/index.ts
 +++ b/pi-extension/subagents/index.ts
-@@ -2,1 +2,6 @@
+@@ -1,5 +1,11 @@
+ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 -import { keyHint } from "@mariozechner/pi-coding-agent";
 +import { keyHint, SessionManager } from "@mariozechner/pi-coding-agent";
 +import { preflightModel, modelOptions } from "./model-preflight.ts";
 +import teamExtension from "./team-extension.ts";
++import { installT3 } from "./t3-adapter.ts";
 +import { reserveTeamChild, captureTeamParent, TeamStore } from "./team.ts";
 +import { installArena } from "./team-arena.ts";
 +import { workerLaunches, type WorkerLaunch } from "./worker-lifecycle.ts";
-@@ -108,1 +113,1 @@
+ import { Type, type Static } from "@sinclair/typebox";
+ import { Box, Text, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+ import { dirname, join, resolve } from "node:path";
+@@ -105,7 +111,7 @@ const SubagentParams = Type.Object({
+         "Has no effect on which agent runs — use `agent` for that.",
+     }),
+   ),
 -  model: Type.Optional(Type.String({ description: "Model override (overrides agent default)" })),
 +  model: Type.Optional(Type.String({ description: "Exact provider/model ID with configured credentials. Overrides the profile model; otherwise inherits the current parent model when the profile has no model. subagents_list reports parent credential-configured options. Missing credentials or unknown models fail without substitution." })),
-@@ -865,1 +870,6 @@
+   cwd: Type.Optional(
+     Type.String({
+       description:
+@@ -862,7 +868,12 @@ function applySandboxToParts(
+   // was intentionally unrestricted (e.g. a fork clone) and is replayed as-is.
+   if (loadout.toolAllowlist) {
+     parts.push("--no-extensions");
 -    parts.push("--tools", shellEscape(loadout.toolAllowlist));
 +    // Allowed by the sandbox, but the team extension activates it only while ON.
 +    parts.push("--tools", shellEscape(`${loadout.toolAllowlist},team_send,load_workflow`));
@@ -21,35 +35,86 @@ index 7e20a0f..66bdef1 100644
 +    if (existsSync(skillDiscovery)) {
 +      parts.push("-e", shellEscape(skillDiscovery));
 +    }
-@@ -1170,1 +1180,1 @@
+ 
+     const extPaths = new Set<string>();
+     for (const tool of loadout.toolAllowlist.split(",")) {
+@@ -1167,14 +1178,16 @@ function startWidgetRefresh() {
+  */
+ async function launchSubagent(
+   params: typeof SubagentParams.static,
 -  ctx: { sessionManager: { getSessionFile(): string | null; getSessionId(): string; getSessionDir(): string }; cwd: string },
-+  ctx: ExtensionContext,
-@@ -1171,1 +1181,1 @@
 -  options?: { surface?: string },
++  ctx: ExtensionContext,
 +  options?: { surface?: string; parentIncarnation?: string; ownership?: WorkerLaunch },
-@@ -1172,0 +1183,2 @@
+ ): Promise<RunningSubagent> {
 +  const parentIncarnation = options?.parentIncarnation ?? captureTeamParent(ctx);
 +  const ownership = options?.ownership;
-@@ -1177,1 +1189,1 @@
+   const startTime = Date.now();
+   const id = Math.random().toString(16).slice(2, 10);
+ 
+   const agentDefs = params.agent ? loadAgentDefaults(params.agent) : null;
 -  const effectiveModel = params.model ?? agentDefs?.model;
 +  const effectiveModel = params.model;
-@@ -1207,0 +1220,1 @@
+   const effectiveTools = agentDefs?.tools;
+   const effectiveSkills = agentDefs?.skills;
+   const effectiveThinking = agentDefs?.thinking;
+@@ -1205,6 +1218,7 @@ async function launchSubagent(
+   // For new surfaces, pause briefly so the shell is ready before sending the command.
+   const surfacePreCreated = !!options?.surface;
+   const surface = options?.surface ?? createSurface(params.name);
 +  try {
-@@ -1318,1 +1331,2 @@
+   if (!surfacePreCreated) {
+     await new Promise<void>((resolve) => setTimeout(resolve, getShellReadyDelayMs()));
+   }
+@@ -1315,7 +1329,8 @@ async function launchSubagent(
+   // ── Pi CLI path ──
+ 
+   // Build pi command
 -  const parts: string[] = ["pi"];
 +  const parts: string[] = [shellEscape(process.execPath), shellEscape(resolve(process.argv[1]))];
 +  if (ownership?.extension) parts.push("-e", shellEscape(ownership.extension));
-@@ -1357,0 +1372,2 @@
+   parts.push("--session", shellEscape(subagentSessionFile));
+ 
+   const subagentDonePath = join(SUBAGENTS_DIR, "subagent-done.ts");
+@@ -1355,9 +1370,12 @@ async function launchSubagent(
+   // Apply model, identity, and the default-deny tool/extension restriction via
+   // the shared helper (same code path resume uses — they can't drift).
+   applySandboxToParts(parts, loadout, { artifactDir, name: params.name });
 +  parts.push("-e", shellEscape(join(SUBAGENTS_DIR, "team-extension.ts")));
 +  const teamChild = await reserveTeamChild(ctx, params.name, subagentSessionFile, surface, parentIncarnation);
-@@ -1360,1 +1376,2 @@
+ 
+   // Build env prefix: subagent identity + config dir propagation + spawn allowlist
 -  const envParts: string[] = [];
 +  const envParts: string[] = [`PI_TEAM_DIR=${shellEscape(teamChild.dir)}`, `PI_TEAM_MEMBER=${shellEscape(teamChild.id)}`];
 +  if (ownership?.owner) envParts.push(`PI_LIFECYCLE_OWNER=${shellEscape(ownership.owner)}`);
-@@ -1424,0 +1442,2 @@
+ 
+   if (resolvedAgentDir) {
+     envParts.push(`PI_CODING_AGENT_DIR=${shellEscape(resolvedAgentDir)}`);
+@@ -1414,7 +1432,7 @@ async function launchSubagent(
+   const cdPrefix = effectiveCwd ? `cd ${shellEscape(effectiveCwd)} && ` : "";
+ 
+   const piCommand = cdPrefix + envPrefix + parts.join(" ");
+-  const command = `${piCommand}; echo '__SUBAGENT_DONE_'$?'__'`;
++  const command = piCommand;
+   const launchScriptName = `${(params.name || "subagent")
+     .toLowerCase()
+     .replace(/[^a-z0-9\s-]/g, "")
+@@ -1422,8 +1440,11 @@ async function launchSubagent(
+     .replace(/-+/g, "-")
+     .replace(/^-|-$/g, "") || "subagent"}-${id}.sh`;
+   const launchScriptFile = join(artifactDir, "subagent-scripts", launchScriptName);
 +  ownership?.assertCurrent();
 +  if (captureTeamParent(ctx) !== parentIncarnation) throw new Error("Parent incarnation changed during launch.");
-@@ -1453,0 +1473,8 @@
+   sendLongCommand(surface, command, {
+     scriptPath: launchScriptFile,
++    exitStatusFile: `${launchScriptFile}.status`,
+     scriptPreamble: [
+       `# Subagent launch script for ${params.name}`,
+       `# Generated: ${new Date().toISOString()}`,
+@@ -1451,6 +1472,14 @@ async function launchSubagent(
+ 
+   runningSubagents.set(id, running);
+   return running;
 +  } catch (error) {
 +    try { closeSurface(surface); } catch {}
 +    try {
@@ -58,21 +123,61 @@ index 7e20a0f..66bdef1 100644
 +    } catch {}
 +    throw error;
 +  }
-@@ -1526,0 +1554,1 @@
+ }
+ 
+ /**
+@@ -1524,6 +1553,7 @@ function deliverPendingQuestion(running: RunningSubagent): void {
+ async function watchSubagent(
+   running: RunningSubagent,
+   signal: AbortSignal,
 +  options: { closeSurface?: boolean } = {},
-@@ -1573,1 +1601,1 @@
+ ): Promise<SubagentResult> {
+   const { name, task, surface, startTime, sessionFile } = running;
+ 
+@@ -1532,6 +1562,7 @@ async function watchSubagent(
+       interval: 1000,
+       sessionFile,
+       sentinelFile: running.sentinelFile,
++      exitStatusFile: running.cli !== "claude" && running.launchScriptFile ? `${running.launchScriptFile}.status` : undefined,
+       onTick() {
+         observeRunningSubagent(running);
+         deliverPendingQuestion(running);
+@@ -1570,7 +1601,7 @@ async function watchSubagent(
+         try { unlinkSync(running.sentinelFile + ".transcript"); } catch {}
+       }
+ 
 -      closeSurface(surface);
 +      if (options.closeSurface !== false) closeSurface(surface);
-@@ -1601,1 +1629,1 @@
+       runningSubagents.delete(running.id);
+ 
+       return { name, task, summary, exitCode: result.exitCode, elapsed, ...(sessionId ? { claudeSessionId: sessionId } : {}) };
+@@ -1598,7 +1629,7 @@ async function watchSubagent(
+     const stats = existsSync(sessionFile) ? summarizeSessionStats(sessionFile) : null;
+     const subagentSessionId = existsSync(sessionFile) ? getSessionId(sessionFile) : null;
+ 
 -    closeSurface(surface);
-+    if (options.closeSurface !== false) closeSurface(surface);
-@@ -1617,1 +1645,1 @@
++    if (options.closeSurface !== false && !result.paneAbsent) closeSurface(surface);
+     runningSubagents.delete(running.id);
+ 
+     return {
+@@ -1614,7 +1645,7 @@ async function watchSubagent(
+     };
+   } catch (err: any) {
+     try {
 -      closeSurface(surface);
 +      if (options.closeSurface !== false) closeSurface(surface);
-@@ -1644,0 +1673,13 @@
+     } catch {}
+     runningSubagents.delete(running.id);
+ 
+@@ -1642,6 +1673,21 @@ async function watchSubagent(
+ 
+ export default function subagentsExtension(pi: ExtensionAPI) {
+   latestPi = pi;
 +  const captureWorkerLaunch = workerLaunches(pi, getAgentConfigDir());
-+  if (!process.env.PI_TEAM_DIR) teamExtension(pi);
++  const team = !process.env.PI_TEAM_DIR ? teamExtension(pi) : undefined;
++  const t3 = installT3(pi, { load: loadAgentDefaults, names: () => SUBAGENT_ALLOWLIST ? [...SUBAGENT_ALLOWLIST] : discoverAgentDefinitions().map(a => a.name) }, team);
 +  installArena(pi, {
++    nativeRun: (args, ctx) => t3.arena(args, ctx),
 +    async launch(task, ctx) {
 +      if (!loadAgentDefaults("arena")?.autoExit) throw new Error("Arena coordinator profile is missing or not auto-exit. Run setup first.");
 +      const ownership = captureWorkerLaunch();
@@ -83,46 +188,167 @@ index 7e20a0f..66bdef1 100644
 +    watch: (running, signal) => watchSubagent(running as RunningSubagent, signal, { closeSurface: false }),
 +    close: closeSurface,
 +  });
-@@ -1760,0 +1802,5 @@
+   // Capture the UI context for widget updates
+   pi.on("session_start", (_event, ctx) => {
+     latestCtx = ctx;
+@@ -1685,14 +1731,14 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+       name: "subagent",
+       label: "Subagent",
+       description:
+-        "Spawn a sub-agent in a dedicated terminal multiplexer pane. " +
++        "Spawn a profile-selected sub-agent. Terminal Pi uses a dedicated multiplexer pane; --t3 uses native local profile threads. " +
+         "This is a fire-and-forget async tool: the call returns immediately with only an acknowledgement. " +
+         "When the sub-agent finishes, the harness AUTOMATICALLY delivers its result as a steer message that wakes you up and starts a new turn — you do not need to do anything to receive it. " +
+         "DO NOT write polling loops, sleep/wait commands, tail/watch scripts, or repeatedly read session/log files to detect completion. DO NOT call subagents_list or any other tool to 'check' status. All of that is wasted work — the harness handles delivery for you. " +
+         "DO NOT fabricate, assume, or summarize results after calling this tool. " +
+         "After spawning, either end your turn immediately, or work on other independent tasks (including spawning more subagents in parallel). The harness will wake you with the result when it is ready.",
+       promptSnippet:
+-        "Spawn a sub-agent in a dedicated terminal multiplexer pane. " +
++        "Spawn a profile-selected sub-agent using the selected terminal or native T3 launcher. " +
+         "This is a fire-and-forget async tool: the call returns immediately with only an acknowledgement. " +
+         "When the sub-agent finishes, the harness AUTOMATICALLY delivers its result as a steer message that wakes you up and starts a new turn — you do not need to do anything to receive it. " +
+         "DO NOT write polling loops, sleep/wait commands, tail/watch scripts, or repeatedly read session/log files to detect completion. DO NOT call subagents_list or any other tool to 'check' status. All of that is wasted work — the harness handles delivery for you. " +
+@@ -1758,6 +1804,15 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+           };
+         }
+ 
++        if (t3.enabled()) {
++          params.model = await preflightModel(ctx, params.model ?? loadAgentDefaults(params.agent)?.model);
++          return t3.launch(_toolCallId, params, ctx, _signal);
++        }
 +        const ownership = captureWorkerLaunch();
 +        const parentIncarnation = captureTeamParent(ctx);
 +        const profileModel = loadAgentDefaults(params.agent)?.model;
 +        params.model = await preflightModel(ctx, params.model ?? profileModel);
 +
-@@ -1804,1 +1850,1 @@
+         // Validate prerequisites (need mux + a session file to derive the
+         // artifact dir that hosts this session's name registry).
+         if (!isMuxAvailable()) {
+@@ -1801,7 +1856,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+         // from then on uniqueRunningName tracks it via the running map.
+         let running;
+         try {
 -          running = await launchSubagent(params, ctx);
 +          running = await launchSubagent(params, ctx, { parentIncarnation, ownership });
-@@ -1966,1 +2012,1 @@
+         } finally {
+           if (reservedName) reservedNames.delete(reservedName);
+         }
+@@ -1963,8 +2018,9 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+         "Project-local agents override global ones with the same name.",
+       parameters: Type.Object({}),
+ 
 -      async execute() {
+-        const list = discoverAgentDefinitions().filter((agent) => !agent.disableModelInvocation);
 +      async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-@@ -1984,1 +2030,1 @@
++        const permitted = t3.enabled() ? new Set(t3.permittedNames()) : undefined;
++        const list = discoverAgentDefinitions().filter((agent) => !agent.disableModelInvocation && (!permitted || permitted.has(agent.name)));
+ 
+         if (list.length === 0) {
+           return {
+@@ -1981,7 +2037,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+         });
+ 
+         return {
 -          content: [{ type: "text", text: lines.join("\n") }],
 +          content: [{ type: "text", text: lines.join("\n") + "\n\n" + modelOptions(ctx) }],
-@@ -2144,0 +2191,5 @@
+           details: { agents: list },
+         };
+       },
+@@ -2011,7 +2067,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+       description:
+         "Send a message to a subagent by name. Names are unique within your session and persist after a subagent finishes, " +
+         "so the SAME name works whether the subagent is running or finished: if it is still running, your message steers its live session; " +
+-        "if it has finished, your message resumes that session and continues it. " +
++        "if it has finished, terminal Pi resumes that session; --t3 queues a new exact assignment on its existing native thread and conversation. Peer DMs never resume completed work. " +
+         "`name` and `message` are both required. " +
+         "Steering a running subagent returns immediately with a local acknowledgement and does NOT, by itself, emit a new result. " +
+         "Resuming is a fire-and-forget async call: when the resumed sub-agent finishes, the harness AUTOMATICALLY delivers its result as a steer message that wakes you up. " +
+@@ -2022,6 +2078,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+         "`name` and `message` are required. Steering returns immediately; resuming delivers its result later as a steer message. " +
+         "Do not poll or fabricate results.",
+       parameters: Type.Object({
++        requestId: Type.Optional(Type.String({ description: "For a native T3 user question, the exact requestId from its notification. Cannot answer permission approvals or start new work for a stale question." })),
+         name: Type.String({
+           description:
+             "Exact display name of the subagent. Steers it if it is still running; resumes its session if it has finished.",
+@@ -2072,6 +2129,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+       },
+ 
+       async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
++        if (t3.enabled()) return t3.message(_toolCallId, params, ctx, _signal);
+         const requestedName = params.name?.trim();
+         if (!requestedName) {
+           const err = "Provide the subagent's `name` to steer (if running) or resume (if finished).";
+@@ -2142,6 +2200,11 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+           return { content: [{ type: "text" as const, text: err }], details: { error: err } };
+         }
+ 
 +        const ownership = captureWorkerLaunch();
 +        const parentIncarnation = captureTeamParent(ctx);
 +        const savedModel = loadout.model ? undefined : SessionManager.open(sessionPath).buildSessionContext().model;
 +        loadout.model = await preflightModel(ctx, loadout.model ?? (savedModel ? `${savedModel.provider}/${savedModel.modelId}` : ""));
 +
-@@ -2156,1 +2207,2 @@
+         const resumedSessionId = entry.sessionId ?? getSessionId(sessionPath) ?? requestedName;
+ 
+         // Record entry count before resuming so we can extract new messages.
+@@ -2153,7 +2216,8 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+         await new Promise<void>((resolve) => setTimeout(resolve, getShellReadyDelayMs()));
+ 
+         // Build pi resume command
 -        const parts = ["pi", "--session", shellEscape(sessionPath)];
 +        const parts = [shellEscape(process.execPath), shellEscape(resolve(process.argv[1])), "--session", shellEscape(sessionPath)];
 +        if (ownership.extension) parts.push("-e", shellEscape(ownership.extension));
-@@ -2168,0 +2221,4 @@
+ 
+         // Load subagent-done extension so the agent can self-terminate if needed
+         const subagentDonePath = join(SUBAGENTS_DIR, "subagent-done.ts");
+@@ -2166,6 +2230,10 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+ 
+         // Replay the model, identity, and default-deny tool/extension sandbox.
+         applySandboxToParts(parts, loadout, { artifactDir, name });
 +        parts.push("-e", shellEscape(join(SUBAGENTS_DIR, "team-extension.ts")));
 +        let teamChild: Awaited<ReturnType<typeof reserveTeamChild>>;
 +        try { teamChild = await reserveTeamChild(ctx, name, sessionPath, surface, parentIncarnation); }
 +        catch (error) { closeSurface(surface); throw error; }
-@@ -2191,1 +2247,2 @@
+ 
+         let resumeMsgFile: string | undefined;
+         if (params.message) {
+@@ -2188,7 +2256,8 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+         // Build env prefix — replay the snapshot's config dir + spawn whitelist
+         // so the resumed process resolves the same agents/extensions and keeps
+         // the same nested-spawn restriction it originally ran with.
 -        const resumeEnvParts: string[] = [];
 +        const resumeEnvParts: string[] = [`PI_TEAM_DIR=${shellEscape(teamChild.dir)}`, `PI_TEAM_MEMBER=${shellEscape(teamChild.id)}`];
 +        if (ownership.owner) resumeEnvParts.push(`PI_LIFECYCLE_OWNER=${shellEscape(ownership.owner)}`);
-@@ -2225,0 +2283,2 @@
+         const resumeAgentDir = loadout.agentDir ?? process.env.PI_CODING_AGENT_DIR ?? null;
+         if (resumeAgentDir) {
+           resumeEnvParts.push(`PI_CODING_AGENT_DIR=${shellEscape(resumeAgentDir)}`);
+@@ -2212,7 +2281,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+         // operate where they did before.
+         const resumeCdPrefix = loadout.cwd ? `cd ${shellEscape(loadout.cwd)} && ` : "";
+ 
+-        const command = `${resumeCdPrefix}${resumeEnvPrefix}${parts.join(" ")}; echo '__SUBAGENT_DONE_'$?'__'`;
++        const command = `${resumeCdPrefix}${resumeEnvPrefix}${parts.join(" ")}`;
+         const launchScriptFile = join(
+           artifactDir,
+           "subagent-scripts",
+@@ -2221,10 +2290,13 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+             .replace(/[^a-z0-9\s-]/g, "")
+             .replace(/\s+/g, "-")
+             .replace(/-+/g, "-")
+-            .replace(/^-|-$/g, "") || "resume"}-resume-${Date.now()}.sh`,
++            .replace(/^-|-$/g, "") || "resume"}-resume-${id}.sh`,
+         );
 +        ownership.assertCurrent();
 +        if (captureTeamParent(ctx) !== parentIncarnation) throw new Error("Parent incarnation changed during resume.");
+         sendLongCommand(surface, command, {
+           scriptPath: launchScriptFile,
++          exitStatusFile: `${launchScriptFile}.status`,
+           scriptPreamble: [
+             `# Subagent resume script for ${name}`,
+             `# Generated: ${new Date().toISOString()}`,
 diff --git a/pi-extension/subagents/model-preflight.ts b/pi-extension/subagents/model-preflight.ts
 new file mode 100644
-index 0000000..09abb30
+index 0000000..8b40f3a
 --- /dev/null
 +++ b/pi-extension/subagents/model-preflight.ts
 @@ -0,0 +1,42 @@
@@ -172,12 +398,24 @@ diff --git a/pi-extension/subagents/subagent-done.ts b/pi-extension/subagents/su
 index ba37f06..368cbfb 100644
 --- a/pi-extension/subagents/subagent-done.ts
 +++ b/pi-extension/subagents/subagent-done.ts
-@@ -15,1 +15,1 @@
+@@ -12,11 +12,12 @@
+  * (auto-exit is suppressed for that turn via `awaitingAnswer`), and the parent
+  * replies with subagent_message — which lands as the subagent's next turn.
+  */
 -import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 +import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-@@ -19,0 +20,1 @@
+ import { Box, Text } from "@mariozechner/pi-tui";
+ import { Type } from "@sinclair/typebox";
+ import { writeFileSync } from "node:fs";
+ import { createSubagentActivityRecorder } from "./activity.ts";
 +import { preflightModel, permanentProviderFailure } from "./model-preflight.ts";
-@@ -178,0 +180,27 @@
+ 
+ export function shouldMarkUserTookOver(agentStarted: boolean): boolean {
+   return agentStarted;
+@@ -176,6 +177,33 @@ export default function (pi: ExtensionAPI) {
+     );
+   }
+ 
 +  let providerFailed = false;
 +  let authResponseFailed = false;
 +  let failureClosed = false;
@@ -205,7 +443,13 @@ index ba37f06..368cbfb 100644
 +    return { message: { ...message, errorMessage: "Provider authentication/configuration failed. Check /login and model configuration." } };
 +  });
 +
-@@ -197,1 +225,8 @@
+   let userTookOver = false;
+   let agentStarted = false;
+   // Set when ask_question is called; suppresses auto-exit so the session stays
+@@ -194,7 +222,14 @@ export default function (pi: ExtensionAPI) {
+     renderWidget(ctx, null);
+   });
+ 
 -  pi.on("input", () => {
 +  pi.on("input", async (_event, ctx) => {
 +    if (autoExit && !agentStarted) {
@@ -215,29 +459,815 @@ index ba37f06..368cbfb 100644
 +        return { action: "handled" as const };
 +      }
 +    }
-@@ -226,1 +261,2 @@
+     recorder.input();
+     // A submitted message is the orchestrator's (or a human's) reply — the
+     // pending ask_question has been answered, however it was delivered. Clear
+@@ -223,7 +258,8 @@ export default function (pi: ExtensionAPI) {
+     recorder.agentStart();
+   });
+ 
 -  pi.on("agent_end", (event, ctx) => {
 +  pi.on("agent_end", async (event, ctx) => {
 +    if (providerFailed) { closeProviderFailure(ctx); return; }
-@@ -238,0 +275,1 @@
+     const messages = (event as any).messages as any[] | undefined;
+     // Never shut down while this session still has work in flight:
+     //  - awaitingAnswer: an ask_question is pending the orchestrator's reply.
+@@ -236,10 +272,17 @@ export default function (pi: ExtensionAPI) {
+     const shouldExit =
+       !awaitingAnswer &&
+       !hasPendingChildren &&
 +      !ctx.hasPendingMessages() &&
-@@ -242,0 +280,6 @@
+       autoExit &&
+       shouldAutoExitOnAgentEnd(userTookOver, messages);
+ 
+     if (shouldExit) {
 +      const teamExit: { check?: Promise<boolean> } = {};
 +      pi.events.emit("team:before-exit", teamExit);
 +      if (teamExit.check && !await teamExit.check) {
 +        recorder.agentEndWaiting();
 +        return;
 +      }
-@@ -291,1 +334,2 @@
+       // Surface stopReason: "error" turns (auto-retry exhausted, provider
+       // overload, etc.) to the parent via the .exit sidecar so the watcher
+       // can report a clear failure with the underlying error message.
+@@ -288,7 +331,8 @@ export default function (pi: ExtensionAPI) {
+     recorder.beforeProviderRequest();
+   });
+ 
 -  pi.on("after_provider_response", () => {
 +  pi.on("after_provider_response", (event) => {
 +    authResponseFailed = event.status === 401 || event.status === 403;
+     recorder.afterProviderResponse();
+   });
+ 
+diff --git a/pi-extension/subagents/t3-adapter.ts b/pi-extension/subagents/t3-adapter.ts
+new file mode 100644
+index 0000000..afb10d0
+--- /dev/null
++++ b/pi-extension/subagents/t3-adapter.ts
+@@ -0,0 +1,756 @@
++import { createHash, randomUUID } from "node:crypto";
++import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, realpathSync } from "node:fs";
++import { homedir } from "node:os";
++import { join, resolve } from "node:path";
++import { TeamStore, processIdentity } from "./team.ts";
++import { Type } from "@sinclair/typebox";
++import installSafeBash from "./tools/safe-bash.ts";
++import { arenaTask, arenaResultText, arenaOutcome } from "./team-arena.ts";
++
++const PREFIX = "mcp__t3-code__";
++const nativeName = (name: string) => name.replace(/^mcp__t3_code__/, PREFIX);
++const memberKey = (assignment: any): string => assignment.memberId ?? assignment.childThreadId;
++const terminalStatus = (status: unknown): boolean => status === "completed" || status === "failed" || status === "cancelled" || status === "interrupted";
++const exactTerminalTask = (result: any, expected: any): boolean => result.taskId === expected.taskId && result.childThreadId === expected.childThreadId && result.childRunId === expected.childRunId && terminalStatus(result.status);
++const hash = (value: string) => createHash("sha256").update(value).digest("hex");
++const text = (value: unknown): value is string => typeof value === "string" && value.length > 0;
++const supportedProfile = (local: any): boolean => !!local && (!local.cli || local.cli === "pi") && !local.skills && !local.cwd && text(local.tools);
++const pause = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
++  signal.throwIfAborted();
++  const abort = () => { clearTimeout(timer); reject(signal.reason); };
++  const timer = setTimeout(() => { signal.removeEventListener("abort", abort); resolve(); }, 20);
++  signal.addEventListener("abort", abort, { once: true });
++});
++function payload(result: any): any {
++  if (result?.isError) throw new Error("T3 MCP operation refused.");
++  // T3's tool_result may already contain the task directly as content JSON,
++  // whereas executeTool may retain an MCP envelope. Decoding is idempotent for
++  // task projections; callers still validate exact ownership/run/terminal state.
++  if (text(result?.taskId) && text(result?.status)) return result;
++  if (result?.structuredContent) return result.structuredContent;
++  const value = result?.content?.find((part: any) => part.type === "text")?.text;
++  if (!text(value)) throw new Error("T3 MCP response has no structured result.");
++  return JSON.parse(value);
++}
++
++// Child-authenticated self reads/waits do not acknowledge T3 task delivery.
++// Never background-poll task_status or read a child's terminal output as its
++// parent: those operations can consume the native completion wake.
++function discoveryClient() {
++  const endpoint = process.env.T3_MCP_URL, token = process.env.T3_MCP_BEARER_TOKEN;
++  if (!endpoint || !token) throw new Error("T3 authenticated MCP context is missing.");
++  const url = new URL(endpoint);
++  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new Error("T3 MCP URL is invalid.");
++  let sequence = 0, session: string | undefined;
++  async function request(method: string, params: unknown, signal: AbortSignal) {
++    const response = await fetch(url, { method: "POST", redirect: "error", signal, headers: {
++      "content-type": "application/json", accept: "application/json, text/event-stream",
++      authorization: token!.startsWith("Bearer ") ? token! : `Bearer ${token}`,
++      "mcp-protocol-version": "2025-06-18", ...(session ? { "mcp-session-id": session } : {}),
++    }, body: JSON.stringify({ jsonrpc: "2.0", ...(method === "notifications/initialized" ? {} : { id: ++sequence }), method, params }) });
++    if (!response.ok) throw new Error("T3 MCP discovery failed.");
++    session = response.headers.get("mcp-session-id") ?? session;
++    const body = await response.text();
++    if (!body) return;
++    const decoded = response.headers.get("content-type")?.includes("text/event-stream")
++      ? body.split("\n").filter(line => line.startsWith("data:")).map(line => JSON.parse(line.slice(5))).find(value => value.id !== undefined)
++      : JSON.parse(body);
++    if (!decoded || decoded.error) throw new Error("T3 MCP discovery refused.");
++    return decoded.result;
++  }
++  let initialized: Promise<unknown> | undefined;
++  let initializingSignal: AbortSignal | undefined;
++  return async (name: string, args: unknown, signal: AbortSignal) => {
++    if (!["t3_thread_list", "t3_thread_read", "t3_thread_wait"].includes(name) && !(name === "t3_pending_request" && ["list", "read"].includes((args as any)?.action))) throw new Error("T3 discovery cannot mutate threads or acknowledge task delivery.");
++    if (initializingSignal?.aborted) { initialized = undefined; initializingSignal = undefined; session = undefined; }
++    if (!initialized) {
++      initializingSignal = signal;
++      initialized = request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "pi-team-admission", version: "1" } }, signal)
++        .then(() => request("notifications/initialized", {}, signal));
++    }
++    const attempt = initialized;
++    try {
++      await attempt;
++      if (initialized === attempt) initializingSignal = undefined;
++    } catch (error) {
++      if (initialized === attempt) { initialized = undefined; initializingSignal = undefined; session = undefined; }
++      throw error;
++    }
++    return payload(await request("tools/call", { name, arguments: args }, signal));
++  };
++}
++
++export function installT3(pi: any, profiles: { load(name: string): any; names(): string[] }, team: any) {
++  pi.registerFlag("t3", { description: "Use native T3 local profile delegation in RPC mode", type: "boolean", default: false });
++  const enabled = () => pi.getFlag("t3") === true;
++  let supported = false, stopped = false, admitted = false, settled = false;
++  let identity: any, binding: any, profile: any, store: TeamStore | undefined;
++  let discover: ReturnType<typeof discoveryClient> | undefined;
++  let preparation: Promise<void> | undefined;
++  let preparationSignal: AbortSignal | undefined;
++  let admissionTouched = false;
++  pi.events.on("subagents:identity", (request: any) => {
++    if (!enabled() || typeof request?.respond !== "function") return;
++    // Authentication and exact child binding complete only at rpc_ready.
++    const snapshot = supported && admitted && !stopped && !settled ? team?.identitySnapshot() : undefined;
++    request.respond(snapshot?.status === (binding ? "child" : "root")
++      ? snapshot : Object.freeze({ status: "unknown" }));
++  });
++  let pendingLaunches = 0;
++  const correctedTasks = new Set<string>();
++  const permittedNames = (): string[] => profile ? profile.subagentAgents ?? [] : profiles.names();
++  const wrappers = new Set<string>();
++  const messageScopes = new Map<string, { threadId: string; mode?: "steer" | "queue"; requestId?: string; questionId?: string; answer?: string }>();
++  let questionTimer: ReturnType<typeof setInterval> | undefined;
++  let asking = false, questionToolRegistered = false, questionQueued = false;
++  const notifiedQuestions = new Set<string>();
++  const tasks = new Map<string, any>();
++  const pendingResumes = new Map<string, { key: string; promise: Promise<any> }>();
++  let arena: { controller: AbortController; taskId?: string; done?: Promise<void>; cancelling: boolean } | undefined;
++  let lifetime = new AbortController();
++  const base = join(homedir(), ".pi", "t3-teams");
++  const bindingFile = (id: string) => join(base, "bindings", `${hash(id)}.json`);
++  const assignmentFile = (taskId: string, runId: string) => join(base, "assignments", `${hash(`${taskId}\0${runId}`)}.json`);
++  const intentFile = (id: string) => join(base, "intents", `${hash(id)}.json`);
++  const publish = (file: string, value: unknown) => {
++    const temporary = `${file}.${randomUUID()}.tmp`;
++    writeFileSync(temporary, JSON.stringify(value), { flag: "wx", mode: 0o600 });
++    renameSync(temporary, file);
++  };
++  const publishBinding = (record: any) => {
++    mkdirSync(join(base, "assignments"), { recursive: true, mode: 0o700 });
++    mkdirSync(join(base, "bindings"), { recursive: true, mode: 0o700 });
++    writeFileSync(assignmentFile(record.taskId, record.childRunId), JSON.stringify(record), { flag: "wx", mode: 0o600 });
++    publish(bindingFile(record.childThreadId), record);
++  };
++  const reject = (message: string): never => { throw new Error(`T3 adapter: ${message}`); };
++  const nativeError = (outcome: any) => {
++    let message = (outcome?.result ?? outcome)?.content?.filter((part: any) => part.type === "text").map((part: any) => part.text).join("\n") || "native tool returned an unspecified error";
++    for (const secret of [process.env.T3_MCP_BEARER_TOKEN, process.env.T3_MCP_URL]) if (secret) message = message.split(secret).join("[redacted]");
++    return message.replace(/Bearer\s+[^\s\"']+/gi, "Bearer [redacted]").replace(/[\x00-\x08\x0b-\x1f]/g, "").slice(0, 1200);
++  };
++  const assertReady = () => {
++    if (!admitted || stopped || settled || !team?.isAdmitted()) reject("membership is not deliverable without an admitted assignment.");
++    const member = store?.state().members[binding ? memberKey(binding) : "root"];
++    if (!member?.live || member.deliverable === false || (binding && (member.t3?.taskId !== binding.taskId || member.t3.runId !== binding.childRunId))) reject("membership is not deliverable for this exact assignment.");
++  };
++  const profileTools = (definition: any): string[] => (definition?.tools ?? "").split(",").map((name: string) => name.trim()).filter(Boolean);
++  const requireTools = (definition: any, packaged = false) => {
++    const available = new Set(pi.getAllTools().map((tool: any) => tool.name));
++    if (packaged) available.add("safe_bash");
++    const missing = profileTools(definition).filter(name => !available.has(name));
++    if (missing.length) reject(`required profile tools unavailable in this native host: ${missing.join(", ")}`);
++  };
++  const allowed = () => new Set([...profileTools(profile), "team_send", "load_workflow", "ask_question",
++    ...(profile?.subagentAgents?.length ? ["subagent", "subagent_message", "subagents_list", `${PREFIX}delegate_task`, `${PREFIX}task_status`, `${PREFIX}task_cancel`, `${PREFIX}t3_thread_send`, `${PREFIX}t3_pending_request`] : [])]);
++  const constrain = () => {
++    if (!profile) return;
++    const active = new Set(pi.getActiveTools());
++    const registered = new Set(pi.getAllTools().map((tool: any) => tool.name));
++    pi.setActiveTools([...allowed()].filter(name => registered.has(name) && (name !== "team_send" || active.has(name))));
++  };
++  async function identify(signal: AbortSignal) {
++    discover ??= discoveryClient();
++    const listing = await discover("t3_thread_list", { limit: 1 }, signal);
++    if (!text(listing.currentThreadId)) reject("authenticated currentThreadId is missing.");
++    const details = await discover("t3_thread_read", { threadId: listing.currentThreadId, limit: 1, runLimit: 1 }, signal);
++    const thread = details.thread;
++    if (thread?.threadId !== listing.currentThreadId || !(thread.parentThreadId === null || text(thread.parentThreadId))) reject("authenticated thread lineage is invalid.");
++    return thread;
++  }
++  async function boundAssignment(thread: any, signal: AbortSignal) {
++    const file = bindingFile(thread.threadId), deadline = Date.now() + 5000;
++    for (;;) {
++      signal.throwIfAborted();
++      if (existsSync(file)) {
++        const record = JSON.parse(readFileSync(file, "utf8"));
++        if (record.childThreadId !== thread.threadId || record.parentThreadId !== thread.parentThreadId) reject("child binding has different authenticated lineage.");
++        if (record.childRunId === thread.activeRunId && text(record.taskId)) {
++          if (record.resumeFrom) {
++            const intent = JSON.parse(readFileSync(intentFile(thread.threadId), "utf8"));
++            if (!["pending", "published"].includes(intent.state) || intent.nonce !== record.intentNonce || intent.previousTaskId !== record.resumeFrom.taskId || intent.previousRunId !== record.resumeFrom.runId || intent.previousMemberId !== record.resumeFrom.memberId) reject("resume binding has no matching explicit orchestrator intent.");
++          }
++          return record;
++        }
++        const intent = existsSync(intentFile(thread.threadId)) ? JSON.parse(readFileSync(intentFile(thread.threadId), "utf8")) : undefined;
++        if (intent?.state !== "pending" || intent.parentThreadId !== thread.parentThreadId || intent.previousTaskId !== record.taskId || intent.previousRunId !== record.childRunId || intent.previousMemberId !== memberKey(record)) reject("child binding does not authorize this native run.");
++      }
++      if (Date.now() >= deadline) reject("child binding was not published before the admission deadline.");
++      await pause(signal);
++    }
++  }
++  async function refreshTerminal(task: any, signal?: AbortSignal): Promise<boolean> {
++    const member = store!.state().members[memberKey(task)];
++    if (!member && !task.admissionFailed) return false;
++    if (member && (member.t3?.taskId !== task.taskId || member.t3.runId !== task.childRunId)) return false;
++    if (member && !member.live && terminalStatus(member.t3!.status)) {
++      if (task.admissionFailed) { task.cleanupComplete = true; task.consumed = true; }
++      return true;
++    }
++    // Unlike task_status or terminal-output reads, this exact-run wait does not
++    // acknowledge a result. It also covers a child that failed before admission.
++    const observed = await discover!("t3_thread_wait", { threadId: task.childThreadId, runId: task.childRunId, timeoutMs: 100 }, AbortSignal.any([lifetime.signal, ...(signal ? [signal] : []), AbortSignal.timeout(1500)]));
++    if (observed.threadId !== task.childThreadId || observed.runId !== task.childRunId || (observed.resultRun && observed.resultRun.runId !== task.childRunId)) throw new Error("T3 terminal observation belongs to another run.");
++    if (observed.timedOut || !terminalStatus(observed.status)) return false;
++    if (member) await store!.transaction(s => {
++      const current = s.members[memberKey(task)];
++      if (current?.incarnation === member.incarnation && current.t3?.taskId === task.taskId && current.t3.runId === task.childRunId) {
++        current.live = false; current.deliverable = false; current.t3.status = observed.status;
++      }
++    });
++    if (task.admissionFailed) { task.cleanupComplete = true; task.consumed = true; }
++    return true;
++  }
++  async function prepare(ctx: any, signal: AbortSignal) {
++    identity = await identify(signal);
++    signal.throwIfAborted();
++    if (!ctx.sessionManager.getSessionFile()) reject("execution requires an independently owned saved session.");
++    if (process.env.PI_LIFECYCLE_OWNER || process.env.PI_TEAM_DIR) reject("inherited terminal worker ownership is unsupported.");
++    if (identity.parentThreadId !== null) {
++      binding = await boundAssignment(identity, signal);
++      profile = profiles.load(binding.agent);
++      if (!profile || hash(JSON.stringify(profile)) !== binding.profileHash) reject("local profile no longer matches the trusted binding.");
++      if (profileTools(profile).includes("safe_bash") && !pi.getAllTools().some((tool: any) => tool.name === "safe_bash")) installSafeBash(pi);
++      requireTools(profile);
++      store = new TeamStore(binding.dir);
++      const member = store.state().members[memberKey(binding)];
++      if (!member?.live || member.t3?.taskId !== binding.taskId || member.t3?.runId !== binding.childRunId || member.t3?.claimed) reject("native assignment was already claimed or retired.");
++      const receipts: any[] = [];
++      pi.events.emit("session-lifecycle:admission", { respond: (receipt: any) => receipts.push(receipt) });
++      const ownership = receipts.length === 1 && receipts[0]?.status === "owned" ? receipts[0] : undefined;
++      if (binding.resumeFrom && (!ownership || ownership.sessionFile !== binding.resumeFrom.sessionFile)) reject("native resume requires ownership of the original canonical saved conversation.");
++      admissionTouched = true;
++      await store.transaction(s => {
++        signal.throwIfAborted();
++        const current = s.members[memberKey(binding)];
++        if (!current?.live || current.t3?.claimed) reject("child binding was already claimed.");
++        current.t3!.claimed = true;
++        current.t3!.sessionFile = ownership?.sessionFile ?? ctx.sessionManager.getSessionFile();
++      });
++      signal.throwIfAborted();
++      if (!binding.resumeFrom) {
++        const model = ctx.modelRegistry.getAll().find((m: any) => `${m.provider}/${m.id}` === binding.model);
++        if (!model || !await pi.setModel(model)) reject("bound child model is unavailable.");
++        if (profile.thinking) pi.setThinkingLevel(profile.thinking);
++      }
++      constrain();
++      const missingActive = profileTools(profile).filter(name => name !== "team_send" && !pi.getActiveTools().includes(name));
++      if (missingActive.length) reject(`required profile tools unavailable under the native CLI loadout: ${missingActive.join(", ")}`);
++      signal.throwIfAborted();
++      await team.start(ctx, { dir: binding.dir, id: memberKey(binding) });
++      store = new TeamStore(binding.dir, () => team.isAdmitted());
++    } else {
++      const dir = join(base, "teams", hash(identity.threadId));
++      mkdirSync(dir, { recursive: true, mode: 0o700 });
++      const receipts: any[] = [];
++      pi.events.emit("session-lifecycle:admission", { respond: (receipt: any) => receipts.push(receipt) });
++      const ownership = receipts.length === 1 && receipts[0]?.status === "owned" ? receipts[0] : undefined;
++      const claimFile = join(dir, "root-claim");
++      if (existsSync(claimFile)) {
++        const claim = JSON.parse(readFileSync(claimFile, "utf8"));
++        if (!ownership || claim.sessionFile !== ownership.sessionFile) reject("root resume requires ownership of the same canonical saved session.");
++        const previous = new TeamStore(dir).state().members.root;
++        if (previous?.live && previous.pid !== process.pid && previous.pid && previous.processIdentity && processIdentity(previous.pid) === previous.processIdentity) reject("the prior root incarnation is still active.");
++      } else {
++        signal.throwIfAborted(); admissionTouched = true;
++        writeFileSync(claimFile, JSON.stringify({ threadId: identity.threadId, sessionFile: ownership?.sessionFile ?? ctx.sessionManager.getSessionFile() }), { flag: "wx", mode: 0o600 });
++      }
++      admissionTouched = true;
++      await team.start(ctx, { dir, id: "root" });
++      store = new TeamStore(dir, () => team.isAdmitted());
++    }
++    // Logical native thread ownership survives replacement and reassignment.
++    // Historical work is addressable, but is not an obligation of this new run.
++    // Rebuilding the index never makes an old member deliverable again.
++    for (const member of Object.values(store!.state().members)) {
++      if (!member.t3) continue;
++      const file = assignmentFile(member.t3.taskId, member.t3.runId);
++      if (!existsSync(file)) continue;
++      const record = JSON.parse(readFileSync(file, "utf8"));
++      if (record.parentThreadId === identity.threadId && memberKey(record) === member.id && record.taskId === member.t3.taskId && record.childRunId === member.t3.runId && record.dir === store!.dir) tasks.set(record.taskId, { ...record, binding: record, historical: true, consumed: true });
++    }
++    signal.throwIfAborted();
++    if (stopped) reject("runtime stopped during admission.");
++    admitted = true;
++    questionTimer = setInterval(() => {
++      if (stopped || settled || !team.isAdmitted()) return;
++      try {
++        const state = store!.state(), memberId = binding ? memberKey(binding) : "root";
++        for (const question of state.questions ?? []) {
++          if (question.parent !== memberId && memberId !== "root") continue;
++          if (notifiedQuestions.has(question.requestId)) continue;
++          const from = state.members[question.from];
++          if (!from?.live || from.deliverable === false || from.incarnation !== question.incarnation || from.t3?.taskId !== question.taskId || from.t3.runId !== question.runId) continue;
++          if (from.pid && (!from.processIdentity || processIdentity(from.pid) !== from.processIdentity)) continue;
++          notifiedQuestions.add(question.requestId);
++          const direct = question.parent === memberId;
++          if (direct) questionQueued = true;
++          pi.sendMessage({ customType: direct ? "t3-question" : "t3-question-audit", content: `Question from ${from.name}, not permission approval. requestId: ${question.requestId}\n${question.question}\n${direct ? `Answer with subagent_message(name=${JSON.stringify(from.name)}, requestId=${JSON.stringify(question.requestId)}, message=your answer).` : "Its direct parent owns the answer."}`, display: true }, direct ? { triggerTurn: true, deliverAs: "steer" } : { deliverAs: "nextTurn" });
++        }
++      } catch { /* No uncertain state authorizes a question notification. */ }
++    }, 50);
++    questionTimer.unref();
++  }
++  pi.on("session_start", (_event: any, ctx: any) => {
++    if (!enabled()) return;
++    if (!questionToolRegistered) {
++      questionToolRegistered = true;
++      pi.registerTool({ name: "ask_question", label: "Ask parent", description: "Ask the owning parent one question through native T3 user input. Works while team messaging is OFF or suspended; never requests permission approval.", parameters: Type.Object({ question: Type.String({ minLength: 1, maxLength: 4096 }) }), async execute(_id: string, args: any, signal: AbortSignal, _update: any, toolCtx: any) {
++        assertReady();
++        if (!binding) reject("ask_question requires a delegated parent.");
++        if (asking) reject("one parent question may be pending at a time.");
++        asking = true;
++        const controller = new AbortController();
++        const active = AbortSignal.any([controller.signal, lifetime.signal, ...(signal ? [signal] : [])]);
++        let requestId: string | undefined;
++        const member = store!.state().members[memberKey(binding)];
++        try {
++          const before = await discover!("t3_pending_request", { action: "list", threadId: binding.childThreadId }, active);
++          if (!Array.isArray(before.requestIds) || !before.requestIds.every(text)) reject("native question inventory is invalid.");
++          let finished = false;
++          const answer = toolCtx.ui.input(`Question for parent: ${args.question}`, undefined, { signal: active });
++          void answer.then(() => { finished = true; }, () => { finished = true; });
++          const deadline = Date.now() + 5000;
++          while (!finished && !requestId) {
++            if (Date.now() >= deadline) reject("native user-input request registration timed out.");
++            const pending = await discover!("t3_pending_request", { action: "list", threadId: binding.childThreadId }, active);
++            if (!Array.isArray(pending.requestIds) || !pending.requestIds.every(text)) reject("native question inventory is invalid.");
++            const added = pending.requestIds.filter((id: string) => !before.requestIds.includes(id));
++            if (added.length > 1) reject("native user-input registration is ambiguous.");
++            requestId = added[0];
++            if (!requestId) await pause(active);
++          }
++          if (requestId) {
++            const question = await discover!("t3_pending_request", { action: "read", threadId: binding.childThreadId, requestId }, active);
++            if (question.requestId !== requestId || question.questions?.length !== 1 || !text(question.questions[0]?.id) || !text(question.questions[0]?.question)) reject("native request is not one readable user question.");
++            await store!.transaction(s => { if (s.members[member.id]?.incarnation !== member.incarnation) reject("question member incarnation changed."); (s.questions ??= []).push({ requestId: requestId!, from: member.id, parent: member.parent!, incarnation: member.incarnation!, taskId: binding.taskId, runId: binding.childRunId, question: question.questions[0].question }); });
++          }
++          const response = await answer;
++          if (typeof response !== "string") reject("parent question was cancelled.");
++          return { content: [{ type: "text", text: response }], details: { requestId, answered: true } };
++        } finally {
++          controller.abort(); asking = false;
++          if (requestId) await store!.transaction(s => { s.questions = (s.questions ?? []).filter(q => q.requestId !== requestId || q.from !== member.id || q.incarnation !== member.incarnation); }).catch(() => {});
++        }
++      } });
++    }
++    supported = ctx.mode === "rpc" && ctx.rpcReadiness === true;
++    if (!supported) {
++      stopped = true;
++      const message = "T3 adapter requires RPC mode and the repository rpc_ready runtime patch.";
++      if (ctx.mode === "print" || ctx.mode === "json") process.stderr.write(`${message}\n`);
++      else ctx.ui.notify(message, "error");
++      ctx.shutdown();
++    }
++    else if (!admitted) { stopped = false; if (lifetime.signal.aborted) lifetime = new AbortController(); }
++  });
++  pi.on("rpc_ready", async (event: any, ctx: any) => {
++    if (!enabled()) return;
++    if (!supported || stopped) reject("readiness capability is unavailable.");
++    const readonly = new Set(["get_state", "get_messages", "get_available_models", "get_available_thinking_levels", "get_commands", "get_last_assistant_text", "get_session_stats", "get_entries", "get_tree", "get_fork_messages"]);
++    const metadata = new Set(["set_model", "cycle_model", "set_thinking_level", "cycle_thinking_level", "set_session_name", "set_steering_mode", "set_follow_up_mode", "set_auto_compaction", "set_auto_retry", "clear_queue"]);
++    // Native startup metadata cannot grant model admission. Child cache warming
++    // stays disabled, and execution reapplies the bound local profile.
++    if (readonly.has(event.command) || metadata.has(event.command)) return;
++    // T3 restores its saved Pi file before any execution. This only permits the
++    // native switch; canonical writer ownership and thread rejoin are checked
++    // by the first execution admission, after guard freshness has completed.
++    if (event.command === "switch_session" && !admitted) return;
++    if (["new_session", "switch_session", "fork", "clone"].includes(event.command) || event.phase === "after_session_change") reject("switching an admitted native thread to another session or fork is unsupported.");
++    if (!process.env.T3_MCP_URL || !process.env.T3_MCP_BEARER_TOKEN) reject("authenticated context is required for execution; offline discovery is readonly.");
++    if (binding && settled) {
++      const previous = binding;
++      const current = await identify(event.signal);
++      const next = await boundAssignment(current, event.signal);
++      if (!next.resumeFrom || next.resumeFrom.taskId !== previous.taskId || next.resumeFrom.runId !== previous.childRunId || next.resumeFrom.memberId !== memberKey(previous) || next.childRunId === previous.childRunId || next.taskId === previous.taskId) reject("completed membership cannot be reopened without an exact new assignment.");
++      admitted = false; settled = false; admissionTouched = false;
++      tasks.clear(); correctedTasks.clear(); notifiedQuestions.clear(); questionQueued = false;
++      if (questionTimer) clearInterval(questionTimer);
++      preparationSignal = event.signal;
++      preparation = prepare(ctx, event.signal);
++    }
++    if (preparationSignal?.aborted && !admitted && !admissionTouched) preparation = undefined;
++    if (!preparation) { preparationSignal = event.signal; preparation = prepare(ctx, event.signal); }
++    const attempt = preparation;
++    try { await attempt; }
++    catch (error) {
++      // Discovery has no shared mutation. A failed claim/registration may have
++      // progressed despite cancellation and must not be blindly replayed.
++      if (preparation === attempt && !admitted && !admissionTouched) preparation = undefined;
++      throw error;
++    }
++    event.signal.throwIfAborted();
++    assertReady();
++    if (profile && ["bash", "export_html"].includes(event.command)) reject("child command is outside the bound profile.");
++    // The binding selects initial defaults once. Later acknowledged native
++    // model/thinking choices remain authoritative; tool permissions do not change.
++    constrain();
++  });
++  pi.on("cache_warming_decision", () => enabled() && (!admitted || !!binding || stopped || settled) ? { action: "stop" } : undefined);
++  pi.on("context_with_system", (event: any) => {
++    if (!enabled()) return;
++    questionQueued = false;
++    constrain();
++    // Reconciliation can reactivate a tool after admission. Filter every request's
++    // declarations as well as enforcing tool_call, including nested execution.
++    const permitted = allowed();
++    return { messages: event.messages.map((message: any) => message.role === "system" && message.toolsAdded
++      ? { ...message, toolsAdded: message.toolsAdded.filter((tool: any) => ![`${PREFIX}delegate_task`, `${PREFIX}t3_thread_send`, `${PREFIX}t3_pending_request`].includes(nativeName(tool.name)) && (!profile || permitted.has(nativeName(tool.name)))) }
++      : message) };
++  });
++  pi.on("input", () => enabled() && (!admitted || stopped || settled) ? { action: "handled" } : undefined);
++  pi.on("before_agent_start", (event: any) => {
++    if (!enabled()) return;
++    const routing = "\n\nActive delegation host: native T3 (--t3). Use subagents_list, subagent and subagent_message for profile delegation; the facade automatically uses native T3 threads, not tmux panes. This active-host guidance supersedes generic terminal-only delegation instructions. When delegation is already requested or authorized, do not ask for additional permission to switch host mechanisms. Do not call delegate_task directly or use shell/tmux workarounds. Real tool permission checks and profile restrictions remain in force.";
++    if (!profile) return { systemPrompt: event.systemPrompt + routing };
++    constrain();
++    const obligations = profile.subagentAgents?.length ? "\nAfter native completion, consume each owned completed result with mcp__t3-code__task_status, even if the notification includes inline output, then synthesize. Do not poll running tasks. The adapter waits without extra inference while children run. Ignoring a task's one result-consumption correction ends this coordinator as incomplete." : "";
++    return { systemPrompt: (profile.systemPromptMode === "replace" ? profile.body : `${event.systemPrompt}\n\n${profile.body ?? ""}`) + obligations + routing };
++  });
++  pi.on("tool_call", async (event: any, ctx: any) => {
++    if (!enabled()) return;
++    if (!admitted || stopped || settled) return { block: true, reason: "T3 membership is not deliverable." };
++    const name = nativeName(event.toolName);
++    if (name === `${PREFIX}delegate_task`) {
++      if (event.parentToolCallId && wrappers.has(event.parentToolCallId)) return;
++      return { block: true, reason: "Native delegation requires the active subagent wrapper." };
++    }
++    if (name.startsWith(PREFIX)) {
++      const messageScope = event.parentToolCallId ? messageScopes.get(event.parentToolCallId) : undefined;
++      if (name === `${PREFIX}t3_thread_send` && messageScope && event.input?.threadId === messageScope.threadId && event.input?.mode === (messageScope.mode ?? "steer")) return;
++      if (name === `${PREFIX}t3_pending_request` && messageScope && event.input?.threadId === messageScope.threadId) {
++        if (event.input.action === "list") return;
++        if (event.input.requestId === messageScope.requestId && event.input.action === "read") return;
++        if (event.input.requestId === messageScope.requestId && event.input.action === "respond" && messageScope.questionId && Object.keys(event.input.answers ?? {}).length === 1 && event.input.answers[messageScope.questionId] === messageScope.answer) return;
++      }
++      const owned = tasks.get(event.input?.taskId);
++      if (name === `${PREFIX}task_cancel` && owned) return;
++      if (name === `${PREFIX}task_status` && owned) {
++        try { if (await refreshTerminal(owned, ctx.signal)) return; }
++        catch { return { block: true, reason: "Native terminal status is unavailable for the exact owned run; no result was consumed." }; }
++        return { block: true, reason: "Owned task is not terminal; wait for its native completion notification, do not poll." };
++      }
++      // Keep unrelated native root capabilities (preview, search, inventory)
++      // usable. Only launch/revive/control paths must go through our facade.
++      const controlled = new Set(["create_threads", "t3_thread_launch", "t3_thread_send", "t3_thread_interrupt", "t3_pending_request", "t3_thread_configure"]);
++      if (!profile && !controlled.has(name.slice(PREFIX.length))) return;
++      return { block: true, reason: "This native control operation requires the owned profile facade." };
++    }
++    if (profile && !allowed().has(event.toolName)) return { block: true, reason: "Tool is outside the bound local profile." };
++  });
++  pi.on("user_bash", () => enabled() ? { result: { output: "T3 adapter does not support user Bash.", exitCode: 1, cancelled: false, truncated: false } } : undefined);
++  pi.on("tool_result", (event: any) => {
++    if (!enabled() || nativeName(event.toolName) !== `${PREFIX}task_status` || event.isError) return;
++    const owned = tasks.get(event.input?.taskId);
++    if (!owned) return;
++    const refuse = (reason: string) => {
++      return { isError: true, content: [{ type: "text", text: `T3 owned result refused (${reason}); task/thread/run authority was not consumed.` }] };
++    };
++    try {
++      const result = payload(payload(event));
++      if (exactTerminalTask(result, owned)) owned.consumed = true;
++      else return refuse("binding-or-terminal-state-mismatch");
++    } catch { return refuse("malformed-native-result"); }
++  });
++  pi.on("agent_before_settle", async (event: any, ctx: any) => {
++    if (!enabled() || !binding || stopped || settled) return;
++    if (!event.signal) { await team.fence(); return; }
++    while (!event.signal.aborted && !stopped) {
++      if (ctx.hasPendingMessages() || team.hasQueuedInput() || questionQueued) return;
++      const state = store!.state();
++      const running = [...tasks.values()].some(task => !task.historical && (task.admissionFailed ? !task.cleanupComplete : state.members[memberKey(task)]?.live !== false));
++      if (pendingLaunches || running) {
++        for (const task of tasks.values()) {
++          if (event.signal.aborted || ctx.hasPendingMessages() || team.hasQueuedInput() || questionQueued) break;
++          const member = state.members[memberKey(task)];
++          const knownTerminal = member?.t3?.taskId === task.taskId && member.t3.runId === task.childRunId && !member.live && terminalStatus(member.t3.status);
++          if (!task.historical && !(knownTerminal && (!task.admissionFailed || task.cleanupComplete))) await refreshTerminal(task, event.signal).catch(() => false);
++        }
++        await pause(event.signal).catch(() => {}); continue;
++      }
++      const unread = [...tasks.values()].filter(task => !task.consumed);
++      if (!unread.length) {
++        if (await team.fenceIfQuiet(() => !event.signal.aborted && !questionQueued && !pendingLaunches && [...tasks.values()].every(task => task.consumed))) return;
++        await pause(event.signal).catch(() => {});
++        continue;
++      }
++      if (unread.every(task => !correctedTasks.has(task.taskId))) {
++        for (const task of unread) correctedTasks.add(task.taskId);
++        return { entries: [{ type: "custom_message", customType: "t3-result-obligation", content: `Completed owned tasks still need model-visible result consumption: ${unread.map(task => task.taskId).join(", ")}. Call mcp__t3-code__task_status for each, then finish synthesis. This is the only correction for these tasks; declining leaves the coordinator incomplete.`, display: true }], continue: true };
++      }
++      await team.fence();
++      ctx.ui.notify("T3 coordinator incomplete: completed task results were not consumed after the correction.", "error");
++      // Do not await abort inside the boundary it is cancelling. The native
++      // agent_settled.aborted receipt makes T3 report interruption, not success.
++      void ctx.abort();
++      return { entries: [{ type: "custom_message", customType: "t3-coordinator-failure", content: "Coordinator failed its result-consumption protocol after one correction; its synthesis is incomplete.", display: true }] };
++    }
++  });
++  pi.on("agent_settled", async () => {
++    if (!enabled() || !binding || !admitted) return;
++    settled = true;
++    // Only the leaf is fenced. Never await T3 here: its terminal projection is
++    // emitted only after Pi returns from this hook.
++    await team.fence();
++    // Capture this assignment: a retained process may admit another run while
++    // an old native observation finishes. It may only retire its own incarnation.
++    const assignment = { ...binding }, observerStore = store!, observerSignal = lifetime.signal;
++    setImmediate(() => { if (!observerSignal.aborted) void observeSelf(assignment, observerStore, observerSignal); });
++  });
++  pi.on("session_shutdown", () => { if (enabled()) { stopped = true; lifetime.abort(); if (questionTimer) clearInterval(questionTimer); } });
++  async function observeSelf(assignment: any, observerStore: TeamStore, observerSignal: AbortSignal) {
++    const incarnation = observerStore.state().members[memberKey(assignment)]?.incarnation;
++    const update = (status: string, terminal: boolean) => observerStore.transaction(s => {
++      const member = s.members[memberKey(assignment)];
++      if (member?.incarnation !== incarnation || member?.t3?.taskId !== assignment.taskId || member.t3.runId !== assignment.childRunId) return;
++      if (status === "unknown" && !member.live && terminalStatus(member.t3.status)) return;
++      member.deliverable = false;
++      member.t3.status = status;
++      if (terminal) member.live = false;
++    });
++    try {
++      while (!observerSignal.aborted) {
++        const status = await discover!("t3_thread_wait", { threadId: assignment.childThreadId, runId: assignment.childRunId, timeoutMs: 1000 }, AbortSignal.any([observerSignal, AbortSignal.timeout(3000)]));
++        // Native wait may follow a restart continuation. It is not our bound run.
++        if (status.threadId !== assignment.childThreadId || status.runId !== assignment.childRunId || (status.resultRun && status.resultRun.runId !== assignment.childRunId)) throw new Error("T3 run identity changed.");
++        if (!status.timedOut && terminalStatus(status.status)) {
++          await update(status.status, true);
++          return;
++        }
++        await pause(observerSignal);
++      }
++    } catch {
++      // An error or another run stays unknown and non-deliverable, never complete.
++      await update("unknown", false).catch(() => {});
++    }
++  }
++  return {
++    enabled,
++    permittedNames,
++    async message(callId: string, args: any, ctx: any, signal: AbortSignal) {
++      assertReady();
++      if (!text(args.name) || !text(args.message)) reject("subagent_message requires name and message.");
++      let state = store!.state();
++      const parentId = binding ? memberKey(binding) : "root";
++      const prefix = parentId === "root" ? "" : `${state.members[parentId].name}/`;
++      const matches = [...tasks.values()].filter(task => {
++        const member = state.members[memberKey(task)];
++        return task.binding?.parentThreadId === identity.threadId && member && (member.name === args.name || member.name === `${prefix}${args.name}` || member.id === args.name || task.childThreadId === args.name);
++      });
++      const live = matches.filter(task => state.members[memberKey(task)]?.live && state.members[memberKey(task)]?.deliverable !== false);
++      if (live.length > 1) reject("subagent name is ambiguous; use its exact childThreadId.");
++      const owned = live[0] ?? matches.at(-1);
++      if (!owned) reject("unknown owned subagent name.");
++      const permittedChildren = permittedNames();
++      if (!permittedChildren.includes(owned.binding?.agent)) reject("the current local profile does not permit controlling this child role.");
++      if (!live.length) {
++        if (args.requestId) reject("that question recipient is no longer deliverable; no answer or new assignment was sent.");
++        await refreshTerminal(owned, signal).catch(() => false);
++        state = store!.state();
++        const member = state.members[memberKey(owned)];
++        if (member.live || !member.t3 || !terminalStatus(member.t3.status)) reject("native child is not deliverable and its terminal outcome is still unknown; no new assignment was launched.");
++        const prior = owned.binding ?? JSON.parse(readFileSync(assignmentFile(owned.taskId, owned.childRunId), "utf8"));
++        if (prior.parentThreadId !== identity.threadId || prior.childThreadId !== owned.childThreadId || prior.taskId !== owned.taskId || prior.childRunId !== owned.childRunId || memberKey(prior) !== member.id) reject("prior native assignment binding is invalid.");
++        const permitted = permittedNames();
++        const local = profiles.load(prior.agent);
++        if (!permitted.includes(prior.agent) || !supportedProfile(local) || (local.sessionMode && !["standalone", "lineage-only"].includes(local.sessionMode))) reject("prior role is not supported by the current local profile permissions.");
++        requireTools(local, true);
++        if (!text(member.t3.sessionFile)) reject("prior canonical conversation ownership is unknown; no new run was requested.");
++        const key = hash(`${identity.threadId}\0${callId}\0${owned.taskId}\0${owned.childRunId}\0${args.message}`);
++        const existing = pendingResumes.get(owned.childThreadId);
++        if (existing) { if (existing.key !== key) reject("another explicit assignment is already pending for this thread."); return existing.promise; }
++        const operation = (async () => {
++          const intent = { nonce: randomUUID(), state: "pending", parentThreadId: identity.threadId, previousTaskId: owned.taskId, previousRunId: owned.childRunId, previousMemberId: member.id, requestKey: key };
++          mkdirSync(join(base, "intents"), { recursive: true, mode: 0o700 });
++          let reserved: { id: string; incarnation: string } | undefined;
++          let priorSummary = "";
++          try {
++            // Foreground control consumes the exact prior result before asking
++            // T3 to create its follow-up task. Forward it to the caller below;
++            // this is never a background completion acknowledgement.
++            const previousOutcome = await ctx.executeTool(`${PREFIX}task_status`, { taskId: owned.taskId }, { signal });
++            if (previousOutcome.isError) reject(`prior native result unavailable: ${nativeError(previousOutcome)}`);
++            const previousResult = payload(payload(previousOutcome.result));
++            if (!exactTerminalTask(previousResult, owned)) reject("prior native result is not terminal for its exact assignment.");
++            priorSummary = typeof previousResult.summary === "string" ? previousResult.summary.slice(0, 8000) : "";
++            await store!.transaction(s => {
++              if (s.members[member.id]?.incarnation !== member.incarnation || s.members[member.id]?.live || s.members[parentId]?.incarnation !== state.members[parentId].incarnation || !s.members[parentId]?.live) reject("assignment ownership changed before native dispatch.");
++              publish(intentFile(owned.childThreadId), intent);
++            });
++            messageScopes.set(callId, { threadId: owned.childThreadId, mode: "queue" });
++            const outcome = await ctx.executeTool(`${PREFIX}t3_thread_send`, { threadId: owned.childThreadId, message: args.message, mode: "queue", clientRequestId: key }, { signal });
++            if (outcome.isError) reject(`native same-thread assignment failed: ${nativeError(outcome)}`);
++            const envelope = payload(outcome.result);
++            const result = envelope?.content || envelope?.structuredContent ? payload(envelope) : envelope;
++            if (result.threadId !== owned.childThreadId || !text(result.taskId) || !text(result.runId) || result.taskId === owned.taskId || result.runId === owned.childRunId || !["queued", "started"].includes(result.delivery) || terminalStatus(result.status)) reject("native queue did not return a distinct exact assignment on the original thread.");
++            signal?.throwIfAborted(); assertReady();
++            const nextMember = `${owned.childThreadId}:assignment:${hash(result.runId)}`;
++            const next = { taskId: result.taskId, childThreadId: owned.childThreadId, childRunId: result.runId, memberId: nextMember };
++            const incarnation = await store!.register({ id: nextMember, name: member.name, parent: parentId, live: true, deliverable: false, t3: { taskId: next.taskId, runId: next.childRunId, status: "running", claimed: false } }, undefined, state.members[parentId].incarnation);
++            reserved = { id: nextMember, incarnation };
++            const record = { ...prior, ...next, parentMemberId: parentId, profileHash: hash(JSON.stringify(local)), intentNonce: intent.nonce, resumeFrom: { taskId: owned.taskId, runId: owned.childRunId, memberId: member.id, sessionFile: member.t3.sessionFile } };
++            signal?.throwIfAborted(); assertReady();
++            publishBinding(record);
++            tasks.set(next.taskId, { ...next, binding: record });
++            publish(intentFile(owned.childThreadId), { ...intent, state: "published" });
++            return { content: [{ type: "text", text: `Queued a new assignment on ${member.name}'s existing native thread and conversation.${priorSummary ? `\nPrevious assignment result, not new permissions:\n${priorSummary}` : ""}` }], details: record };
++          } catch (error) {
++            if (reserved) await store!.retire(reserved.id, reserved.incarnation).catch(() => {});
++            await new TeamStore(store!.dir).transaction(() => { const current = JSON.parse(readFileSync(intentFile(owned.childThreadId), "utf8")); if (current.nonce === intent.nonce) publish(intentFile(owned.childThreadId), { ...intent, state: "failed" }); }).catch(() => {});
++            throw error;
++          } finally { messageScopes.delete(callId); }
++        })();
++        pendingResumes.set(owned.childThreadId, { key, promise: operation });
++        try { return await operation; } finally { if (pendingResumes.get(owned.childThreadId)?.promise === operation) pendingResumes.delete(owned.childThreadId); }
++      }
++      messageScopes.set(callId, { threadId: owned.childThreadId });
++      try {
++        const question = (state.questions ?? []).find(q => q.from === memberKey(owned) && q.incarnation === state.members[memberKey(owned)]?.incarnation && q.taskId === owned.taskId && q.runId === owned.childRunId && (!args.requestId || q.requestId === args.requestId));
++        if (args.requestId && !question) reject("requestId is not a current owned-assignment user question; permission requests and stale answers cannot be sent.");
++        if (args.requestId || question) {
++          const nativeCall = async (input: any) => {
++            const outcome = await ctx.executeTool(`${PREFIX}t3_pending_request`, input, { signal });
++            if (outcome.isError) reject(`native user-question operation refused: ${nativeError(outcome)}`);
++            const value = payload(outcome.result);
++            return value?.content || value?.structuredContent ? payload(value) : value;
++          };
++          const scope = messageScopes.get(callId)!;
++          const pending = await nativeCall({ action: "list", threadId: owned.childThreadId });
++          const requestId = args.requestId ?? question!.requestId;
++          if (!Array.isArray(pending.requestIds) || !pending.requestIds.includes(requestId)) reject("requestId is not a pending user question of this owned child; permission requests cannot be answered.");
++          scope.requestId = requestId;
++          const request = await nativeCall({ action: "read", threadId: owned.childThreadId, requestId });
++          if (request.requestId !== requestId || request.questions?.length !== 1 || !text(request.questions[0]?.id)) reject("native request is not one readable user question.");
++          scope.questionId = request.questions[0].id; scope.answer = args.message;
++          await nativeCall({ action: "respond", threadId: owned.childThreadId, requestId, answers: { [scope.questionId!]: args.message } });
++          return { content: [{ type: "text", text: `Answered user question ${requestId} for ${state.members[memberKey(owned)].name}.` }], details: { requestId, childThreadId: owned.childThreadId, answered: true } };
++        }
++        const outcome = await ctx.executeTool(`${PREFIX}t3_thread_send`, { threadId: owned.childThreadId, message: args.message, mode: "steer", clientRequestId: randomUUID() }, { signal });
++        if (outcome.isError) reject(`native steering refused: ${nativeError(outcome)}`);
++        const envelope = payload(outcome.result);
++        const result = envelope?.content || envelope?.structuredContent ? payload(envelope) : envelope;
++        if (result.threadId !== owned.childThreadId || result.runId !== owned.childRunId || result.delivery !== "steered") reject("native steering did not target the exact active bound run.");
++        return { content: [{ type: "text", text: `Steered ${state.members[memberKey(owned)].name} without starting a new run.` }], details: { taskId: owned.taskId, childThreadId: owned.childThreadId, runId: owned.childRunId } };
++      } finally { messageScopes.delete(callId); }
++    },
++    async arena(args: string, ctx: any) {
++      assertReady();
++      if (typeof ctx.executeTool !== "function" || !ctx.signal) reject("native arena requires scoped command tool execution.");
++      if (args.trim() === "cancel") {
++        const active = arena;
++        if (!active) return;
++        if (active.taskId) {
++          active.cancelling = true;
++          const cancelled = await ctx.executeTool(`${PREFIX}task_cancel`, { taskId: active.taskId });
++          if (cancelled.isError) { active.cancelling = false; reject(`native arena cancellation refused: ${nativeError(cancelled)}`); }
++          const task = tasks.get(active.taskId);
++          const descendants = await store!.cancelTree(memberKey(task));
++          await store!.transaction(s => { for (const member of descendants) if (s.members[member.id]?.incarnation === member.incarnation) s.members[member.id].deliverable = false; });
++        }
++        active.controller.abort();
++        await active.done;
++        return;
++      }
++      if (arena) reject("an arena is already running in this thread.");
++      if (!permittedNames().includes("arena") || !ctx.tools.some((tool: any) => tool.name === "subagent")) reject("the current profile/loadout does not permit launching arena.");
++      const skill = pi.getCommands().find((command: any) => command.source === "skill" && ["arena", "skill:arena"].includes(command.name));
++      if (!skill?.sourceInfo?.path) reject("Arena skill is not installed.");
++      const active = { controller: new AbortController(), taskId: undefined as string | undefined, done: undefined as Promise<void> | undefined, cancelling: false };
++      arena = active;
++      const signal = AbortSignal.any([ctx.signal, active.controller.signal, lifetime.signal]);
++      let outcome = "failed", errorText: string | undefined;
++      active.done = store!.withSuspension(async () => {
++        const launched = await ctx.executeTool("subagent", { agent: "arena", name: `arena-${Date.now()}`, task: arenaTask(skill.sourceInfo.path, args) }, { signal });
++        if (launched.isError) reject(`native arena launch failed: ${nativeError(launched)}`);
++        active.taskId = launched.result.details?.taskId;
++        const task = tasks.get(active.taskId!);
++        if (!task) reject("native arena launch returned no owned task.");
++        pi.events.emit("arena:started", { taskId: task.taskId, childThreadId: task.childThreadId });
++        for (;;) {
++          signal.throwIfAborted();
++          if (active.cancelling) { await pause(signal); continue; }
++          const member = store!.state().members[memberKey(task)];
++          if (member?.live === false && terminalStatus(member.t3?.status ?? "")) break;
++          await refreshTerminal(task, signal).catch(() => false);
++          await pause(signal);
++        }
++        // This is foreground command result consumption, not a background poll.
++        const observed = await ctx.executeTool(`${PREFIX}task_status`, { taskId: task.taskId }, { signal });
++        if (observed.isError) reject(`native arena result unavailable: ${nativeError(observed)}`);
++        const result = payload(payload(observed.result));
++        if (!exactTerminalTask(result, task)) reject("native arena result is not terminal for its bound run.");
++        outcome = result.status === "completed" ? "finished" : "failed";
++        pi.sendMessage({ customType: "arena-result", content: arenaResultText(outcome, result.summary ?? ""), display: true }, { deliverAs: "nextTurn" });
++      }).catch((error: any) => {
++        outcome = active.controller.signal.aborted || ctx.signal.aborted ? "cancelled" : "failed";
++        errorText = outcome === "failed" ? String(error?.message ?? error) : undefined;
++        if (!stopped && errorText) ctx.ui.notify(errorText, "error");
++      }).finally(() => {
++        arena = undefined;
++        if (!stopped) {
++          const state = store!.state();
++          const result = arenaOutcome(outcome, outcome === "cancelled", state, errorText);
++          pi.appendEntry("arena-outcome", result);
++          pi.events.emit("arena:finished", result);
++        }
++      });
++      await active.done;
++    },
++    async launch(callId: string, args: any, ctx: any, signal: AbortSignal) {
++      assertReady();
++      const permitted = permittedNames();
++      if (!permitted.includes(args.agent)) reject("agent is not in the current profile allowlist.");
++      const local = profiles.load(args.agent);
++      if (!supportedProfile(local) || args.fork) reject("only local Pi profiles with an explicit tool list and shared working directory are supported.");
++      if (args.cwd !== undefined) {
++        let sameDirectory = false;
++        try { sameDirectory = realpathSync(resolve(ctx.cwd, args.cwd)) === realpathSync(ctx.cwd); } catch {}
++        if (!sameDirectory) reject("cwd must resolve to the same existing directory as this session. Native T3 children share the session working directory; omit cwd or use that directory. A different working directory is unsupported.");
++      }
++      // Native parentThreadId/binding supplies lineage without copying parent turns.
++      if (local.sessionMode && !["standalone", "lineage-only"].includes(local.sessionMode)) reject("forked native sessions are unsupported; use a standalone or lineage-only profile.");
++      requireTools(local, true);
++      if (!text(args.model)) reject("an exact credential-checked model is required.");
++      pendingLaunches++;
++      try {
++      wrappers.add(callId);
++      let result: any;
++      try {
++        result = await ctx.executeTool(`${PREFIX}delegate_task`, { task: args.task, title: args.name ?? args.agent, mode: "async", isolation: "shared", clientRequestId: randomUUID(), target: { providerInstanceId: identity.providerInstanceId, model: args.model } }, { signal });
++      } finally { wrappers.delete(callId); }
++      if (result?.isError || result?.status === "error") reject(`native delegation failed: ${nativeError(result)}`);
++      const task = payload(payload(result.result ?? result));
++      if (![task.taskId, task.childThreadId, task.childRunId].every(text) || task.remoteChild || task.childThreadId === identity.threadId) reject("native delegation did not return exact local task/thread/run IDs.");
++      task.memberId = task.childThreadId;
++      tasks.set(task.taskId, task);
++      const parentId = binding ? memberKey(binding) : "root";
++      const parent = store!.state().members[parentId];
++      const name = parentId === "root" ? args.name ?? args.agent : `${parent.name}/${args.name ?? args.agent}`;
++      const member = { id: task.childThreadId, name, parent: parentId, live: true, deliverable: false, t3: { taskId: task.taskId, runId: task.childRunId, status: "running", claimed: false } };
++      let reservedIncarnation: string | undefined;
++      try {
++        reservedIncarnation = await store!.register(member, undefined, parent.incarnation);
++        const record = { taskId: task.taskId, childThreadId: task.childThreadId, childRunId: task.childRunId, parentThreadId: identity.threadId, parentMemberId: parentId, memberId: task.memberId, dir: store!.dir, agent: args.agent, profileHash: hash(JSON.stringify(local)), model: args.model };
++        task.binding = record;
++        signal?.throwIfAborted();
++        assertReady();
++        publishBinding(record);
++        return { content: [{ type: "text", text: `Native T3 profile child started: ${task.taskId}. Completion is delivered by T3.` }], details: record };
++      } catch (error) {
++        // Native ownership exists even if the local member reservation failed.
++        // Keep that receipt, request cleanup through the native permission path,
++        // and discharge the failed launch only after exact terminal observation.
++        task.admissionFailed = true;
++        let cancellationRequested = false;
++        try {
++          const cancelled = await ctx.executeTool(`${PREFIX}task_cancel`, { taskId: task.taskId }, { signal: AbortSignal.any([lifetime.signal, AbortSignal.timeout(3000)]) });
++          cancellationRequested = !cancelled.isError;
++        } catch { /* A closed command scope cannot authorize cleanup. Receipt remains owned. */ }
++        if (reservedIncarnation) await store!.retire(member.id, reservedIncarnation).catch(() => {});
++        const reason = error instanceof Error ? error.message : String(error);
++        return { isError: true, content: [{ type: "text", text: `${reason}\nNative task ${task.taskId} was created but could not be admitted. Native cancellation ${cancellationRequested ? "requested" : "not confirmed"}; its exact receipt remains tracked until terminal.` }], details: { taskId: task.taskId, childThreadId: task.childThreadId, childRunId: task.childRunId, launchFailed: true, cancellationRequested } };
++      }
++      } finally { pendingLaunches--; }
++    },
++  };
++}
 diff --git a/pi-extension/subagents/team-arena.ts b/pi-extension/subagents/team-arena.ts
 new file mode 100644
-index 0000000..b7d3325
+index 0000000..5012017
 --- /dev/null
 +++ b/pi-extension/subagents/team-arena.ts
-@@ -0,0 +1,114 @@
+@@ -0,0 +1,125 @@
 +import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 +import { readFileSync } from "node:fs";
 +import { TeamStore, teamIdentity, processIdentity, paneOwner, type Member } from "./team.ts";
@@ -245,9 +1275,16 @@ index 0000000..b7d3325
 +import { homedir } from "node:os";
 +import { join } from "node:path";
 +
++export const arenaTask = (skillPath: string, request: string) => `Read and follow the arena skill at ${skillPath}. Run fresh independent candidates as the skill directs. User request:\n${request}`;
++export const arenaResultText = (status: string, summary: string) => `Arena ${status}.\n${summary}`;
++export const arenaOutcome = (status: string, cancelled: boolean, state: { desired: boolean; leases: readonly unknown[] }, error?: string) => ({
++  status: cancelled ? "cancelled" : status, cancelled, effective: state.desired && state.leases.length === 0, ...(error ? { error } : {}),
++});
++
 +interface Running { sessionFile: string; surface: string; }
 +interface Result { summary: string; exitCode: number; }
 +interface Hooks {
++  nativeRun?: (args: string, ctx: any) => Promise<void>;
 +  launch(task: string, ctx: ExtensionContext): Promise<Running>;
 +  watch(running: Running, signal: AbortSignal): Promise<Result>;
 +  close(surface: string): void;
@@ -293,6 +1330,10 @@ index 0000000..b7d3325
 +  const captureWorkerLaunch = workerLaunches(pi, process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"));
 +  const runs = new Set<{ controller: AbortController; promise?: Promise<void> }>();
 +  async function run(args: string, ctx: ExtensionContext) {
++    if (pi.getFlag("t3") === true) {
++      if (!hooks.nativeRun) throw new Error("Native arena adapter is unavailable.");
++      return hooks.nativeRun(args, ctx);
++    }
 +    if (args.trim() === "cancel") {
 +      for (const active of runs) active.controller.abort();
 +      await Promise.all([...runs].map(r => r.promise));
@@ -309,12 +1350,12 @@ index 0000000..b7d3325
 +    active.promise = store.withSuspension(async () => {
 +      let running: Running | undefined;
 +      try {
-+        running = await hooks.launch(`Read and follow the arena skill at ${skill.sourceInfo.path}. Run fresh independent candidates as the skill directs. User request:\n${args}`, ctx);
++        running = await hooks.launch(arenaTask(skill.sourceInfo.path, args), ctx);
 +        pi.events.emit("arena:started", { sessionFile: running.sessionFile, surface: running.surface });
 +        if (active.controller.signal.aborted) throw new Error("Arena cancelled.");
 +        const result = await hooks.watch(running, active.controller.signal);
 +        outcome = result.exitCode ? "failed" : "finished";
-+        pi.sendMessage({ customType: "arena-result", content: `${active.controller.signal.aborted ? "Arena cancelled" : result.exitCode ? "Arena failed" : "Arena finished"}.\n${result.summary}`, display: true }, { deliverAs: "nextTurn" });
++        pi.sendMessage({ customType: "arena-result", content: arenaResultText(active.controller.signal.aborted ? "cancelled" : result.exitCode ? "failed" : "finished", result.summary), display: true }, { deliverAs: "nextTurn" });
 +      } finally {
 +        if (running) {
 +          const identity = JSON.parse(readFileSync(`${running.sessionFile}.team.json`, "utf8"));
@@ -329,7 +1370,7 @@ index 0000000..b7d3325
 +      runs.delete(active);
 +      const cancelled = active.controller.signal.aborted;
 +      const state = store.state();
-+      const result = { status: cancelled ? "cancelled" : outcome, cancelled, effective: state.desired && state.leases.length === 0, ...(errorText ? { error: errorText } : {}) };
++      const result = arenaOutcome(outcome, cancelled, state, errorText);
 +      pi.appendEntry("arena-outcome", result);
 +      pi.events.emit("arena:finished", result);
 +      if (ctx.mode === "tui") ctx.ui.notify(`Arena ${result.status}.`, result.status === "failed" ? "error" : "info");
@@ -354,10 +1395,10 @@ index 0000000..b7d3325
 +}
 diff --git a/pi-extension/subagents/team-extension.ts b/pi-extension/subagents/team-extension.ts
 new file mode 100644
-index 0000000..088492e
+index 0000000..4b85d01
 --- /dev/null
 +++ b/pi-extension/subagents/team-extension.ts
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,291 @@
 +import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 +import { Type } from "@sinclair/typebox";
 +import { TeamStore, effective, peerContext, teamIdentity, processIdentity, type SendArgs, type TeamMessage } from "./team.ts";
@@ -365,6 +1406,7 @@ index 0000000..088492e
 +import { closeSurface } from "./tmux.ts";
 +
 +export default function teamExtension(pi: ExtensionAPI) {
++  pi.registerFlag("team", { description: "Start new conversations with team messaging enabled", type: "boolean", default: false });
 +  // Load the opt-in guard before this extension. Only no responder is legacy;
 +  // once any responder is seen, missing or malformed replies stay fail-closed.
 +  type Admission = "unmanaged" | { sessionFile: string; generation: string } | undefined;
@@ -395,6 +1437,21 @@ index 0000000..088492e
 +  let timer: ReturnType<typeof setInterval> | undefined;
 +  let stopped = false;
 +  let latest: ExtensionContext;
++  let identitySessionFile: string | undefined;
++  // Publish only the role established by this owner, bound to current admission.
++  const identitySnapshot = () => {
++    try {
++      if (identitySessionFile && !stopped && admission && admission !== "unmanaged" &&
++          latest.sessionManager.getSessionFile() === identitySessionFile && admitted()) {
++        return Object.freeze({ status: member === "root" ? "root" as const : "child" as const, sessionFile: admission.sessionFile });
++      }
++    } catch { /* Unreadable identity is unknown, not a missing bus response. */ }
++    return Object.freeze({ status: "unknown" as const });
++  };
++  pi.events.on("subagents:identity", (request: any) => {
++    if (pi.getFlag("t3") === true || typeof request?.respond !== "function") return;
++    request.respond(identitySnapshot());
++  });
 +  let deferredExit = false;
 +  let retiring = false;
 +  let lifecycle = 0;
@@ -508,17 +1565,25 @@ index 0000000..088492e
 +      } finally { if (!interrupted) waits.delete(sent.id); }
 +    },
 +  });
-+  pi.on("session_start", async (_event, ctx) => {
++  const start = async (ctx: ExtensionContext, nativeIdentity?: { dir: string; id: string }) => {
++    identitySessionFile = undefined;
++    unsubscribeExit?.();
++    if (timer) clearInterval(timer);
++    invalidateRetirement();
++    seen.clear(); consumed.clear(); queuedIds.clear(); waits.clear(); history.length = 0;
++    queuedGeneration = -1;
 +    latest = ctx;
 +    admission = queryAdmission();
-+    if (!admitted()) { sync(); return; }
-+    const identity = teamIdentity(ctx);
++    if (!admitted()) { sync(); if (nativeIdentity) throw new Error("T3 team admission unavailable."); return; }
++    const identity = nativeIdentity ?? teamIdentity(ctx);
 +    member = identity.id;
 +    const captured = admission;
-+    store = TeamStore.create(identity.dir, () => admitted(captured));
++    // CLI flags are hydrated after the factory. Existing team state wins,
++    // including an explicit OFF and every inherited child's shared choice.
++    store = TeamStore.create(identity.dir, () => admitted(captured), member === "root" && pi.getFlag("team") === true);
 +    const existing = store.state().members[member];
 +    try {
-+      incarnation = await store.register(existing ? { ...existing, live: true, pid: process.pid, processIdentity: processIdentity(process.pid) } : { id: member, name: "orchestrator", parent: null, live: true, pid: process.pid, processIdentity: processIdentity(process.pid) }, existing?.incarnation);
++      incarnation = await store.register(existing ? { ...existing, live: true, deliverable: true, pid: process.pid, processIdentity: processIdentity(process.pid) } : { id: member, name: "orchestrator", parent: null, live: true, pid: process.pid, processIdentity: processIdentity(process.pid) }, existing?.incarnation);
 +    } catch (error) { stopped = true; ctx.shutdown(); throw error; }
 +    for (const entry of ctx.sessionManager.getEntries()) {
 +      if (entry.type === "custom" && entry.customType === "team-received") seen.add((entry.data as any).id);
@@ -545,10 +1610,21 @@ index 0000000..088492e
 +    sync();
 +    timer = setInterval(() => { try { deliver(); } catch { /* Fail closed; the next boundary reports state errors. */ } }, 100);
 +    timer.unref();
-+  });
++    identitySessionFile = ctx.sessionManager.getSessionFile();
++  };
++  pi.on("session_start", async (_event, ctx) => { if (pi.getFlag("t3") !== true) await start(ctx); });
 +  pi.on("input", () => { invalidateRetirement(); });
 +  pi.on("before_agent_start", () => { invalidateRetirement(); sync(); });
 +  pi.on("agent_start", () => { invalidateRetirement(); });
++  pi.on("agent_before_settle", async (event: any) => {
++    if (pi.getFlag("t3") !== true || member === "root") return;
++    // An interrupted explicit reply wait still owns its original deadline.
++    while (!event.signal?.aborted && !stopped && admitted() && waits.size && !queuedIds.size) {
++      deliver();
++      if (waits.size && !queuedIds.size) await new Promise(resolve => setTimeout(resolve, 50));
++    }
++    if (!event.signal?.aborted && queuedIds.size) return { continue: true };
++  });
 +  pi.on("tool_call", event => { if (event.toolName === "team_send" && (!store || !admitted() || !effective(store.state()))) return { block: true, reason: "Team messaging is OFF." }; });
 +  pi.on("context", event => {
 +    const state = sync();
@@ -589,26 +1665,46 @@ index 0000000..088492e
 +    waits.clear();
 +    if (timer) clearInterval(timer);
 +    if (store && incarnation) {
-+      await cleanupTeam(store, member, closeSurface, incarnation, event.reason === "reload" || event.reason === "resume");
++      // Native T3 owns its children. Runtime teardown is not logical cancellation.
++      if (pi.getFlag("t3") !== true) await cleanupTeam(store, member, closeSurface, incarnation, event.reason === "reload" || event.reason === "resume");
 +      await store.retire(member, incarnation);
 +    }
 +  });
++  return {
++    start,
++    identitySnapshot,
++    isAdmitted: () => admitted(),
++    hasQueuedInput: () => queuedIds.size > 0,
++    async fenceIfQuiet(eligible: () => boolean) {
++      const fenced = await store.retireIfQuiet(member, incarnation, seen, () => !stopped && admitted() && !waits.size && !queuedIds.size && !latest.hasPendingMessages() && eligible(), true);
++      if (fenced) { stopped = true; if (timer) clearInterval(timer); }
++      return fenced;
++    },
++    async fence() {
++      stopped = true;
++      waits.clear();
++      if (timer) clearInterval(timer);
++      if (store && incarnation) await store.transaction(s => {
++        if (s.members[member]?.incarnation === incarnation) s.members[member].deliverable = false;
++      });
++    },
++  };
 +}
 diff --git a/pi-extension/subagents/team.ts b/pi-extension/subagents/team.ts
 new file mode 100644
-index 0000000..0331c9c
+index 0000000..f1d0046
 --- /dev/null
 +++ b/pi-extension/subagents/team.ts
-@@ -0,0 +1,213 @@
+@@ -0,0 +1,215 @@
 +import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 +import { join } from "node:path";
 +import { homedir } from "node:os";
 +import { randomUUID } from "node:crypto";
 +import { execFileSync } from "node:child_process";
 +
-+export interface Member { id: string; name: string; parent: string | null; live: boolean; incarnation?: string; pid?: number; processIdentity?: string; surface?: string; panePid?: number; paneIdentity?: string; }
++export interface Member { id: string; name: string; parent: string | null; live: boolean; deliverable?: boolean; t3?: { taskId: string; runId: string; status: string; claimed: boolean; sessionFile?: string }; incarnation?: string; pid?: number; processIdentity?: string; surface?: string; panePid?: number; paneIdentity?: string; }
 +export interface TeamMessage { id: string; generation: number; from: string; fromName: string; to: string; message: string; reply_to?: string; recipients: string[]; timestamp: number; }
-+interface State { desired: boolean; generation: number; leases: string[]; members: Record<string, Member>; cancelled: string[]; }
++interface State { desired: boolean; generation: number; leases: string[]; members: Record<string, Member>; cancelled: string[]; questions?: { requestId: string; from: string; parent: string; incarnation: string; taskId: string; runId: string; question: string }[]; }
 +export interface SendArgs { to: string; message: string; wait_for_reply?: boolean; reply_to?: string; }
 +export function processIdentity(pid: number): string | undefined {
 +  try { return execFileSync("ps", ["-p", String(pid), "-o", "lstart=", "-o", "command="], { encoding: "utf8", timeout: 1000 }).trim() || undefined; } catch { return undefined; }
@@ -645,10 +1741,10 @@ index 0000000..0331c9c
 +      return result;
 +    } finally { rmSync(lock, { recursive: true, force: true }); }
 +  }
-+  static create(dir: string, admitted: () => boolean = () => true): TeamStore {
++  static create(dir: string, admitted: () => boolean = () => true, desired = false): TeamStore {
 +    if (!admitted()) throw new Error("Team admission unavailable.");
 +    mkdirSync(dir, { recursive: true, mode: 0o700 });
-+    try { writeFileSync(join(dir, "state.json"), JSON.stringify({ desired: false, generation: 0, leases: [], members: {}, cancelled: [] }), { flag: "wx", mode: 0o600 }); }
++    try { writeFileSync(join(dir, "state.json"), JSON.stringify({ desired, generation: 0, leases: [], members: {}, cancelled: [] }), { flag: "wx", mode: 0o600 }); }
 +    catch (error: any) { if (error.code !== "EEXIST") throw error; }
 +    return new TeamStore(dir, admitted);
 +  }
@@ -716,21 +1812,22 @@ index 0000000..0331c9c
 +    return this.transaction(s => {
 +      if (!effective(s)) throw new Error("Team messaging is OFF.");
 +      const from = s.members[sender];
-+      if (!from?.live) throw new Error("Sender is not active.");
++      if (!from?.live || from.deliverable === false) throw new Error("Sender is not active.");
 +      if (typeof args.message !== "string" || !args.message.trim() || Buffer.byteLength(args.message) > 4096) throw new Error("Message must contain 1–4096 bytes.");
 +      if (typeof args.to !== "string") throw new Error("Missing recipient.");
 +      const members = Object.values(s.members);
 +      let targets: Member[];
 +      if (args.to === "#team") {
 +        if (args.wait_for_reply || args.reply_to) throw new Error("Broadcasts cannot wait for or reference a reply.");
-+        targets = members.filter(m => m.live && m.id !== sender && (!m.pid || (!!m.processIdentity && processIdentity(m.pid) === m.processIdentity)));
++        targets = members.filter(m => m.live && m.deliverable !== false && m.id !== sender && (!m.pid || (!!m.processIdentity && processIdentity(m.pid) === m.processIdentity)));
 +        if (!targets.length) throw new Error("No active recipients; message not delivered. Team messages do not resume completed subagents.");
 +      } else {
 +        targets = args.to === "parent" ? members.filter(m => m.id === (from.parent ?? "root"))
 +          : members.filter(m => m.id === args.to || m.name === args.to);
 +        if (!targets.length) throw new Error("Unknown or ambiguous recipient. Use its full peer name.");
-+        targets = targets.filter(m => m.live && (!m.pid || processIdentity(m.pid) === m.processIdentity));
-+        if (!targets.length) throw new Error("Recipient has completed; only orchestrator steering can resume it.");
++        const unavailable = targets.some(m => m.live && m.deliverable === false);
++        targets = targets.filter(m => m.live && m.deliverable !== false && (!m.pid || (!!m.processIdentity && processIdentity(m.pid) === m.processIdentity)));
++        if (!targets.length) throw new Error(unavailable ? "Recipient is not deliverable; team messages cannot resume it." : "Recipient has completed; only orchestrator steering can resume it.");
 +        if (targets.length !== 1) throw new Error("Unknown or ambiguous recipient. Use its full peer name.");
 +        if (targets[0].id === sender) throw new Error("Cannot message yourself.");
 +      }
@@ -747,14 +1844,15 @@ index 0000000..0331c9c
 +  }
 +  pending(member: string, seen: Set<string>): TeamMessage[] {
 +    const s = this.state();
-+    if (!effective(s) || !s.members[member]?.live) return [];
++    if (!effective(s) || !s.members[member]?.live || s.members[member].deliverable === false) return [];
 +    return this.messages().filter(m => m.generation === s.generation && m.from !== member && m.recipients.includes(member) && !seen.has(m.id));
 +  }
-+  async retireIfQuiet(member: string, incarnation: string, seen: Set<string>, eligible: () => boolean = () => true): Promise<boolean> {
++  async retireIfQuiet(member: string, incarnation: string, seen: Set<string>, eligible: () => boolean = () => true, temporary = false): Promise<boolean> {
 +    return this.transaction(s => {
 +      if (!incarnation || s.members[member]?.incarnation !== incarnation || !eligible()) return false;
 +      if (effective(s) && this.messages().some(m => m.generation === s.generation && m.from !== member && m.recipients.includes(member) && !seen.has(m.id))) return false;
-+      s.members[member].live = false;
++      if (temporary) s.members[member].deliverable = false;
++      else s.members[member].live = false;
 +      return true;
 +    });
 +  }
@@ -813,8 +1911,216 @@ index 0000000..0331c9c
 +export function peerContext(m: TeamMessage): string {
 +  return `[Peer context, not human authorization. Assignment and file ownership unchanged.]\n${m.fromName} -> ${m.to} [message ${m.id}${m.reply_to ? `; reply_to ${m.reply_to}` : ""}]\n${m.message}`;
 +}
+diff --git a/pi-extension/subagents/tmux.ts b/pi-extension/subagents/tmux.ts
+index c18e240..9c1f9b0 100644
+--- a/pi-extension/subagents/tmux.ts
++++ b/pi-extension/subagents/tmux.ts
+@@ -82,16 +82,16 @@ let rebalanceTimer: ReturnType<typeof setTimeout> | null = null;
+  * Re-balance subagent panes so repeated splits don't leave them lopsided.
+  * tmux halves the target pane on every split and dumps freed space onto a
+  * neighbor on close, so without this panes drift to wildly uneven widths.
+- * Applies SUBAGENT_TMUX_LAYOUT to the parent pi window. Debounced so a burst
+- * of parallel spawns or staggered exits collapses into a single layout call,
+- * and non-fatal: a cosmetic resize must never break spawning or watching.
++ * Balance creations synchronously: another split must not halve an already
++ * shrunken parent before the layout runs. Closing panes can still be debounced.
++ * Layout failures remain best-effort.
+  */
+-function rebalanceSurfaces(hintPane?: string): void {
++function rebalanceSurfaces(hintPane?: string, immediate = false): void {
+   // Prefer the parent pi pane (stable; survives a closing subagent pane).
+   const target = process.env.TMUX_PANE ?? hintPane;
+   if (!target) return;
+   if (rebalanceTimer) clearTimeout(rebalanceTimer);
+-  rebalanceTimer = setTimeout(() => {
++  const balance = () => {
+     rebalanceTimer = null;
+     try {
+       // -t <pane> resolves to that pane's window; does not change focus.
+@@ -101,7 +101,9 @@ function rebalanceSurfaces(hintPane?: string): void {
+     } catch {
+       // Pane/window may be gone; balancing is best-effort.
+     }
+-  }, 120);
++  };
++  if (immediate) balance();
++  else rebalanceTimer = setTimeout(balance, 120);
+ }
+ 
+ // ── Surface primitives ──
+@@ -144,12 +146,25 @@ export function createSurfaceSplit(
+   }
+   args.push("-P", "-F", "#{pane_id}");
+ 
+-  const pane = execFileSync("tmux", args, { encoding: "utf8" }).trim();
++  let pane: string;
++  try {
++    pane = execFileSync("tmux", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
++  } catch (error) {
++    const stderr = (error as { stderr?: unknown })?.stderr;
++    if ((typeof stderr === "string" || Buffer.isBuffer(stderr)) &&
++        /^(?:size or position )?no space for a new pane$/.test(stderr.toString().trim())) {
++      throw new Error(JSON.stringify({
++        code: "TMUX_PANE_CAPACITY", launched: false, queued: false, retryable: true,
++        message: "Task not launched or queued. Retry this same request after space is freed. If subagents are running, wait for an automatic completion notification; do not poll or sleep. Otherwise ask the user to enlarge the window or free pane space. No automatic retry is scheduled.",
++      }));
++    }
++    throw error;
++  }
+   if (!pane.startsWith("%")) {
+     throw new Error(`Unexpected tmux split-window output: ${pane}`);
+   }
+ 
+-  rebalanceSurfaces(pane);
++  rebalanceSurfaces(pane, true);
+   return pane;
+ }
+ 
+@@ -178,7 +193,7 @@ export function sendCommand(surface: string, command: string): void {
+ export function sendLongCommand(
+   surface: string,
+   command: string,
+-  options?: { scriptPath?: string; scriptPreamble?: string },
++  options?: { scriptPath?: string; scriptPreamble?: string; exitStatusFile?: string },
+ ): string {
+   const scriptPath =
+     options?.scriptPath ??
+@@ -190,6 +205,17 @@ export function sendLongCommand(
+   mkdirSync(dirname(scriptPath), { recursive: true });
+ 
+   const scriptParts = ["#!/bin/bash"];
++  if (options?.exitStatusFile) {
++    // Install before any preamble/guard can exit. Publish only the shell's actual
++    // status, atomically, to this launch's file; never touch the provider sidecar.
++    const target = shellEscape(options.exitStatusFile);
++    const temporary = shellEscape(`${options.exitStatusFile}.tmp`);
++    const receipt = `status=$?; trap - EXIT; printf '%s\\n' "$status" > ${temporary} && mv -f ${temporary} ${target}; exit "$status"`;
++    scriptParts.push(`trap ${shellEscape(receipt)} EXIT`);
++    // Bash's EXIT trap can otherwise see the previous command's status (even
++    // zero) when its terminal disappears while it is waiting for the child.
++    scriptParts.push("trap 'exit 129' HUP", "trap 'exit 130' INT", "trap 'exit 143' TERM");
++  }
+   if (options?.scriptPreamble) {
+     scriptParts.push(options.scriptPreamble.trimEnd());
+   }
+@@ -247,13 +273,15 @@ export interface PollResult {
+   exitCode: number;
+   /** Error message if reason is "error" (auto-retry exhausted, provider overload, etc.) */
+   errorMessage?: string;
++  /** A successful tmux inventory confirmed the pane is already gone. */
++  paneAbsent?: boolean;
+ }
+ 
+ /**
+  * Interpret an `.exit` sidecar payload (written by the error path in
+  * subagent-done.ts). Centralized so both the fast and slow paths in
+- * pollForExit decode the payload the same way. Clean completions write no
+- * sidecar and are detected via the terminal sentinel instead.
++ * pollForExit decode the payload the same way. Shell exit receipts are separate
++ * from these provider diagnostics.
+  *
+  * Note: ask_question does NOT write a `.exit` sidecar — it keeps the session
+  * open and signals the parent via a separate `.ask` file (see deliverPendingQuestion).
+@@ -272,9 +300,9 @@ function interpretExitSidecar(data: any): PollResult {
+ export const __pollForExitTest__ = { interpretExitSidecar };
+ 
+ /**
+- * Poll until the subagent exits. Checks for a `.exit` sidecar file first
+- * (written by the error path), falling back to the terminal sentinel for
+- * clean-completion and crash detection.
++ * Poll for provider errors and per-launch shell receipts. Legacy callers without
++ * a receipt retain terminal/Claude sentinels. A successful pane inventory can
++ * establish disappearance; a failed tmux query cannot establish an exit.
+  */
+ export async function pollForExit(
+   surface: string,
+@@ -283,25 +311,38 @@ export async function pollForExit(
+     interval: number;
+     sessionFile?: string;
+     sentinelFile?: string;
++    exitStatusFile?: string;
+     onTick?: (elapsed: number) => void;
+   },
+ ): Promise<PollResult> {
+   const start = Date.now();
++  const readProviderExit = (): PollResult | undefined => {
++    if (!options.sessionFile) return;
++    try {
++      const exitFile = `${options.sessionFile}.exit`;
++      const data = JSON.parse(readFileSync(exitFile, "utf-8"));
++      rmSync(exitFile, { force: true });
++      return interpretExitSidecar(data);
++    } catch {}
++  };
+ 
+   for (;;) {
+     if (signal.aborted) {
+       throw new Error("Aborted while waiting for subagent to finish");
+     }
+ 
+-    // Fast path: check for .exit sidecar file (written by the error path)
+-    if (options.sessionFile) {
++    const providerExit = readProviderExit();
++    if (providerExit) return providerExit;
++
++    if (options.exitStatusFile) {
+       try {
+-        const exitFile = `${options.sessionFile}.exit`;
+-        if (existsSync(exitFile)) {
+-          const data = JSON.parse(readFileSync(exitFile, "utf-8"));
+-          rmSync(exitFile, { force: true });
+-          return interpretExitSidecar(data);
+-        }
++        const status = readFileSync(options.exitStatusFile, "utf-8");
++        const result: PollResult = /^(0|[1-9]\d{0,2})\n$/.test(status) && Number(status) <= 255
++          ? { reason: "done", exitCode: Number(status) }
++          : { reason: "error", exitCode: 1, errorMessage: "Invalid subagent shell exit receipt; exit status unknown." };
++        // The provider may have written its diagnostic between our first read
++        // and shell exit. It always takes precedence over the shell's status.
++        return readProviderExit() ?? result;
+       } catch {}
+     }
+ 
+@@ -318,21 +359,24 @@ export async function pollForExit(
+     try {
+       const screen = await readScreenAsync(surface, 5);
+       const match = screen.match(/__SUBAGENT_DONE_(\d+)__/);
+-      if (match) {
++      if (match && !options.exitStatusFile) {
+         return { reason: "sentinel", exitCode: parseInt(match[1], 10) };
+       }
+     } catch {
+-      // Surface may have been destroyed — check if .exit file appeared in the meantime
+-      if (options.sessionFile) {
+-        try {
+-          const exitFile = `${options.sessionFile}.exit`;
+-          if (existsSync(exitFile)) {
+-            const data = JSON.parse(readFileSync(exitFile, "utf-8"));
+-            rmSync(exitFile, { force: true });
+-            return interpretExitSidecar(data);
+-          }
+-        } catch {}
+-      }
++      const providerExit = readProviderExit();
++      if (providerExit) return providerExit;
++      try {
++        const { stdout } = await execFileAsync("tmux", ["list-panes", "-a", "-F", "#{pane_id}"], { encoding: "utf8", timeout: 2000 });
++        const panes = stdout.trim().split("\n");
++        if (panes.every(pane => /^%\d+$/.test(pane)) && !panes.includes(surface)) {
++          // Recheck a receipt on the next iteration if shell exit raced capture.
++          if (options.exitStatusFile && existsSync(options.exitStatusFile)) continue;
++          return {
++            ...(readProviderExit() ?? { reason: "error", exitCode: 1, errorMessage: "Subagent pane disappeared without an exit receipt; exit status unknown." }),
++            paneAbsent: true,
++          };
++        }
++      } catch { /* Transient/unavailable tmux is not evidence of process exit. */ }
+     }
+ 
+     const elapsed = Math.floor((Date.now() - start) / 1000);
 diff --git a/pi-extension/subagents/worker-lifecycle.ts b/pi-extension/subagents/worker-lifecycle.ts
 new file mode 100644
+index 0000000..d631f95
 --- /dev/null
 +++ b/pi-extension/subagents/worker-lifecycle.ts
 @@ -0,0 +1,40 @@

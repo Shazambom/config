@@ -25,7 +25,7 @@ for (const status of ['pending', 'unprotected', 'revoked-at-lock']) {
   const bus = new EventEmitter(), commands = new Map();
   let receipt = status === 'revoked-at-lock' ? owned : { managed: true, status };
   bus.on('session-lifecycle:admission', req => req.respond(receipt));
-  const pi = { events: { emit: (n, v) => bus.emit(n, v) }, on() {}, registerCommand: (n, c) => commands.set(n, c), getCommands: () => [{ source: 'skill', name: 'arena', sourceInfo: { path: join(directory, 'SKILL.md') } }], appendEntry() {}, sendMessage() {} };
+  const pi = { getFlag() { return false; }, events: { emit: (n, v) => bus.emit(n, v) }, on() {}, registerCommand: (n, c) => commands.set(n, c), getCommands: () => [{ source: 'skill', name: 'arena', sourceInfo: { path: join(directory, 'SKILL.md') } }], appendEntry() {}, sendMessage() {} };
   const capture = workerLaunches(pi, process.env.PI_CODING_AGENT_DIR);
   let launchCalls = 0;
   installArena(pi, { async launch() { launchCalls++; capture(); throw new Error('Launch must not be reached'); }, async watch() { throw new Error('No worker'); }, close() {} });

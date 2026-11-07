@@ -21,6 +21,24 @@ Subagent task text is not a slash-command invocation. When delegating a named
 workflow, instruct the child to call `load_workflow` with its exact name before
 following it. Restricted children have this read-only lookup tool too.
 
+## Root operator focus
+
+When acting as the root operator for the user's task, keep a concise ordinary
+conversation note at clarification, consequential decisions and handoff. State
+the agreed goal and its actual source, non-goals, observed progress and unresolved
+work. Label your interpretations as interpretations, not operator agreement.
+Before optional investigation or delegation, relate the question to that note
+and ask a bounded useful question through the existing tools. All capabilities
+and helper choices remain available.
+
+Update the note when an actual instruction changes scope, not merely when a
+user-role message arrives. Automation and child completion messages can have
+that role without changing the user's goal. Advisory task cues are reminders,
+not instructions or authority. Reported tool success is not fresh artifact
+inspection; missing results and recording gaps remain unknown. Inspect available
+evidence and current state to investigate and continue. Do not automatically
+replay uncertain work or impose a blanket human approval gate.
+
 ## Configuration
 
 - Minimize config. Choose the simplest safe, correct design. No speculative settings or abstractions.
@@ -41,9 +59,14 @@ are not automatically executed by Pi's prompt templates.
 
 ## Delegation
 
-pi-interactive-subagents runs agents asynchronously in tmux panes. Use
-subagents_list to discover profiles, subagent to launch, and subagent_message
-with the child's name to send guidance or resume it. Parallel subagent calls
+pi-interactive-subagents runs agents asynchronously through the selected host.
+Terminal Pi uses tmux panes; `--t3` uses native T3 threads automatically through
+our subagent facade. Use subagents_list to discover profiles, subagent to launch,
+and subagent_message with the child's name to send guidance or resume it.
+For already requested or authorized delegation, do not ask for extra permission
+to switch host mechanisms. Do not call raw delegate_task or use shell/tmux
+workarounds in T3. Real tool permission checks and profile restrictions still apply.
+Parallel subagent calls
 start independent agents. Completion notifications wake the parent; do not poll
 or substitute a different execution mode when a launch fails.
 

@@ -56,14 +56,13 @@ test('synchronous native send failure cancels recurrence rather than retrying', 
   } finally { h.stop(); }
 });
 
-test('cancellation removes busy unsent work and stale IDs never reach a replacement', async () => {
+test('cancellation before due removes unsent work and stale IDs never reach a replacement', async () => {
   const h = harness();
   try {
     const job = await h.call('wake_every', { every_seconds: 1, reminder: 'x' });
     h.emit('agent_start');
-    await pause(1150);
-    assert.equal(h.sent.length, 0);
     await h.call('wake_cancel', { job_id: job.job_id });
+    await pause(1150);
     h.emit('agent_end');
     assert.equal(h.sent.length, 0);
     h.emit('session_start');
@@ -77,9 +76,11 @@ test('cron uses wall-clock boundaries, repeats automatically, and coalesces a ca
   try {
     const job = await h.call('wake_cron', { expression: '* * * * *', timezone: 'UTC', reminder: 'Calendar action' });
     assert.equal(job.next_at, '2026-01-01T00:01:00.000Z');
+    h.emit('agent_start');
     t.mock.timers.tick(30000);
     assert.equal(h.sent.length, 1);
     assert.equal(h.sent[0].message.details.due_at, job.next_at);
+    assert.deepEqual(h.sent[0].options, { triggerTurn: true, deliverAs: 'steer' });
     h.commit(0);
     t.mock.timers.tick(60000);
     assert.equal(h.sent.length, 2);
@@ -123,7 +124,7 @@ test('interval repeats automatically; list and cancel use exact IDs and stop fut
     await pause(1050);
     assert.equal(h.sent.length, 2, 'code must repeat without model rearm');
     assert.equal(Date.parse(h.sent[1].message.details.due_at) - Date.parse(h.sent[0].message.details.due_at), 1000);
-    assert.deepEqual(h.sent[0].options, { triggerTurn: true, deliverAs: 'followUp' });
+    assert.deepEqual(h.sent[0].options, { triggerTurn: true, deliverAs: 'steer' });
     const cancelled = await h.call('wake_cancel', { job_id: job.job_id });
     assert.equal(cancelled.status, 'cancelled_future_only');
     assert.deepEqual((await h.call('wake_list')).timers, []);
@@ -132,13 +133,14 @@ test('interval repeats automatically; list and cancel use exact IDs and stop fut
   } finally { h.stop(); }
 });
 
-test('busy ticks coalesce to one unsent notice; cancellation drops it but not submitted work', async () => {
+test('busy ticks retain one submitted and one pending notice; cancellation drops only pending', async () => {
   const h = harness();
   try {
     const job = await h.call('wake_every', { every_seconds: 1, reminder: 'Repeat action' });
     h.emit('agent_start');
     await pause(3200);
-    assert.ok(h.sent.length <= 1, 'busy work must not accumulate native follow-ups');
+    assert.equal(h.sent.length, 1, 'busy recurring work submits before agent_end without a backlog');
+    assert.equal(h.sent[0].options.deliverAs, 'steer');
     h.emit('agent_end');
     assert.equal(h.sent.length, 1);
     await h.call('wake_cancel', { job_id: job.job_id });
@@ -147,6 +149,27 @@ test('busy ticks coalesce to one unsent notice; cancellation drops it but not su
     await pause(1100);
     assert.equal(h.sent.length, 1);
   } finally { h.stop(); }
+});
+
+test('recurring pending notices cannot cross owner, reload or shutdown boundaries', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let elapsed = 0;
+  t.mock.method(performance, 'now', () => elapsed);
+  for (const boundary of ['generation', 'sessionFile', 'session_start', 'session_shutdown']) {
+    const h = harness();
+    try {
+      await h.call('wake_every', { every_seconds: 1, reminder: 'old owner' });
+      elapsed += 1000; t.mock.timers.tick(1000);
+      elapsed += 1000; t.mock.timers.tick(1000);
+      assert.equal(h.sent.length, 1, 'one submitted, one pending');
+      if (boundary === 'generation' || boundary === 'sessionFile') h.owner = { ...h.owner, [boundary]: 'replacement' };
+      else h.emit(boundary);
+      h.commit(0);
+      elapsed += 1000; t.mock.timers.tick(1000);
+      h.emit('agent_end');
+      assert.equal(h.sent.length, 1, 'stale pending notice is never forwarded');
+    } finally { h.stop(); }
+  }
 });
 
 test('unknown cancellation is an error; validation and cancellation cannot release submitted capacity', async () => {
@@ -174,5 +197,7 @@ test('unconfirmed native submission stays bounded, including asynchronous failur
     assert.equal(h.sent.length, 1, 'without custom message_end no additional message can be submitted');
     h.commit(0);
     assert.equal(h.sent.length, 2, 'at most one coalesced pending notice follows commit');
+    assert.equal(Date.parse(h.sent[1].message.details.due_at) - Date.parse(h.sent[0].message.details.due_at), 2000,
+      'pending slot contains latest tick, not first missed tick');
   } finally { h.stop(); }
 });

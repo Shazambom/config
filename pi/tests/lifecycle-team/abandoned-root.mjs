@@ -31,7 +31,7 @@ if (role === 'owner') {
     let tools = [], shutdowns = 0;
     emitter.on('session-lifecycle:admission', request => request.respond({ managed: true, status, sessionFile: join(directory, 'session.jsonl'), generation: 'admitted-successor' }));
     const ctx = { sessionManager: { getSessionId: () => 'abandoned', getEntries: () => [] }, isIdle: () => true, hasPendingMessages: () => false, shutdown() { shutdowns++; } };
-    extension({ on: (n, fn) => handlers.set(n, fn), events: { emit: (n, v) => emitter.emit(n, v), on: (n, fn) => { emitter.on(n, fn); return () => emitter.off(n, fn); } }, registerTool() {}, registerCommand() {}, getActiveTools: () => tools, setActiveTools: t => { tools = t; }, appendEntry() {}, sendMessage() {} });
+    extension({ on: (n, fn) => handlers.set(n, fn), events: { emit: (n, v) => emitter.emit(n, v), on: (n, fn) => { emitter.on(n, fn); return () => emitter.off(n, fn); } }, registerFlag() {}, getFlag() { return false; }, registerTool() {}, registerCommand() {}, getActiveTools: () => tools, setActiveTools: t => { tools = t; }, appendEntry() {}, sendMessage() {} });
     return { start: () => handlers.get('session_start')({}, ctx), stop: () => handlers.get('session_shutdown')({}, ctx), get shutdowns() { return shutdowns; } };
   }
   try {

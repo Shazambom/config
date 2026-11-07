@@ -118,6 +118,7 @@ try {
   extension.default({
     on(name, callback) { const callbacks = lifecycle.get(name) ?? []; callbacks.push(callback); lifecycle.set(name, callbacks); },
     events: { emit: (name, value) => events.emit(name, value), on(name, callback) { events.on(name, callback); return () => events.off(name, callback); } },
+    registerFlag() {}, getFlag() { return false; },
     registerTool: tool => tools.set(tool.name, tool), registerCommand() {}, registerMessageRenderer() {},
     getActiveTools: () => activeTools, setActiveTools: value => { activeTools = value; },
   });

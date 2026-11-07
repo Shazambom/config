@@ -10,7 +10,6 @@ const result = details => ({ content: [{ type: 'text', text: JSON.stringify(deta
 export default function install(pi, definitions) {
   const jobs = new Map();
   let incarnation;
-  let busy = false;
 
   function readOwner() {
     let snapshot;
@@ -33,7 +32,6 @@ export default function install(pi, definitions) {
 
   function stop() {
     incarnation = undefined;
-    busy = false;
     for (const job of jobs.values()) clearTimeout(job.timer);
     jobs.clear();
   }
@@ -57,7 +55,7 @@ export default function install(pi, definitions) {
   }
 
   function dispatch(job) {
-    if (job.cancelled || !job.pending || job.submitted || (busy && job.kind !== 'after')) return;
+    if (job.cancelled || !job.pending || job.submitted) return;
     if (!current(job)) {
       cancel(job);
       warn(job, 'Wakeup cancelled because session ownership changed.');
@@ -70,7 +68,7 @@ export default function install(pi, definitions) {
       // This API returns void. Async failures go to Pi's extension-error channel;
       // absent message_end, retain the slot and never blindly resubmit.
       pi.sendMessage({ customType: 'wakeups', content: JSON.stringify(event), display: true, details: event },
-        { triggerTurn: true, deliverAs: 'followUp' });
+        { triggerTurn: true, deliverAs: job.kind === 'after' ? 'followUp' : 'steer' });
     } catch {
       job.submitted = undefined;
       cancel(job);
@@ -115,9 +113,7 @@ export default function install(pi, definitions) {
 
   pi.on('session_start', () => { stop(); incarnation = {}; });
   pi.on('session_shutdown', stop);
-  pi.on('agent_start', () => { busy = true; });
   pi.on('agent_end', () => {
-    busy = false;
     for (const job of jobs.values()) dispatch(job);
   });
   pi.on('message_end', ({ message }) => {

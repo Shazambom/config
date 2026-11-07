@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: latest-resolved-no-fallback
+expected_outcome: |
+  Select newest approved, show its existing outcome and ask next action; do not choose older pending work.

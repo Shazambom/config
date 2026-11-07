@@ -3,6 +3,17 @@
 `./init.sh --pi-no-terminal` deploys Pi without running tmux or iTerm2 setup.
 Use it when terminal preferences and helpers must remain untouched.
 
+For an explicit checked Pi deployment, run
+`./init.sh --pi-delivery /path/to/new-receipt.json` with an existing parent
+directory and a new receipt filename. It skips terminal setup and checks the
+exact RPC package selected by setup. Failed or unknown checks make this operation
+fail even if setup exited zero; ordinary startup keeps its warning policy.
+The receipt separates setup exit and static RPC asset verification from entry-point
+and behavior checks, which remain `not_run`. It is not a feature-readiness claim.
+Existing receipts are never overwritten. An interrupted receipt means completion
+was not observed, not that work stopped or is safe to repeat. See
+[delivery lessons](../docs/lessons/pi-delivery.md) and `bash pi/test-delivery.sh`.
+
 Interactive launches automatically use tmux so subagents can open their own panes.
 Existing sessions outside tmux must exit and resume through `pi` to use this routing.
 The reported resize lag remains unresolved.
@@ -75,7 +86,8 @@ Without npm, setup bootstraps Node and installs Pi under `~/.local`; add
 /path/to/config/pi.sh
 ```
 
-This runs `init.sh --pi`, installs the lockfile-pinned Pi locally if needed,
+This runs `init.sh --pi` for terminal launches and `init.sh --pi-no-terminal`
+for explicit headless modes, installs the lockfile-pinned Pi locally if needed,
 deploys the repository defaults, and starts your existing Pi **in your current
 directory**. The lockfile-pinned local Pi remains a fallback and test runtime;
 it does not constrain your global Pi version.
@@ -553,6 +565,22 @@ calls can launch in parallel. There is no workflowScript API or installed
 subagent skill. Workers need exclusive files or separate worktrees. They do
 not get automatic Git isolation or a filesystem security sandbox.
 
+Pane creation rebalances immediately so burst launches do not repeatedly shrink
+only the parent pane. Genuine exhaustion returns a tool error with JSON content:
+`code="TMUX_PANE_CAPACITY"`, `launched=false`, `queued=false`, `retryable=true`.
+Retry the same request after space is freed. Wait for running agents' completion
+notifications; otherwise ask the user to enlarge the window or free pane space.
+There is no launch queue or automatic retry. Other tmux errors retain their diagnostics.
+Run `bash pi/test-subagent-capacity.sh` for private tmux and installed-SDK checks.
+
+Clean Pi child exits use an atomic status receipt from the launch shell, unique
+per launch or resume. Terminal redraws cannot erase that receipt, and printing a
+completion-looking marker cannot finish a receipt-backed task. Provider errors
+retain their existing diagnostic path. A confirmed missing pane without a receipt
+reports an unknown exit rather than waiting forever or inventing success.
+`bash pi/test-subagent-completion.sh` checks native child CLI completion, parent
+notification and pane cleanup with a scripted local provider.
+
 Plain `pi` uses the auto-tmux `pi.sh` launcher. Interactive launches outside
 tmux create a session; launches inside tmux reuse the current pane. Print/RPC,
 help, version, and model-listing invocations bypass tmux. iTerm2 uses native
@@ -564,7 +592,17 @@ Node executable and Pi entry point, independent of a new pane's shell PATH.
 ### Optional team communication
 
 `/team on` enables communication for the current orchestrator and its descendants.
-It is off by default. `/team off` disables routing and removes the active messaging
+Launch with `pi --team` to initialize team messaging when no saved team state
+exists. Existing choices win on resume and reload, including `/team off`; children
+inherit the shared choice. New conversations use the supplied flag. Omitting the
+flag leaves the normal launch behavior unchanged.
+
+For a client launching Pi over RPC, put `--team` in its additional launch
+arguments. This enables our messaging mode; it does not provide tmux or connect
+that client's native child threads to our team automatically. Check `/team` in
+the conversation, and use `/team on` for an existing conversation kept OFF.
+
+`/team off` disables routing and removes the active messaging
 tool and its prompt guidance. Unread messages are discarded across that mode change,
 not replayed when enabled again. Messages already read cannot be forgotten.
 The normal `subagent_message` steering path works in either mode.
@@ -610,6 +648,7 @@ backs it up privately, and preserves customized skills.
 Checks:
 
 ```sh
+bash pi/test-team-flag.sh        # Installed CLI flag and two-process RPC messaging checks
 bash pi/test-team.sh             # SDK and routing checks without model network calls
 bash claude/test-arena-setup.sh  # Conservative skill migration
 bash pi/test-team-live.sh --run  # Real models and tmux; uses account quota
@@ -622,6 +661,59 @@ and synthesize without another user prompt; it cannot rely on ordinary child
 completion notifications to start reacting. It preserves the receipts, provider tool inventories,
 and output artifacts in a printed private temporary directory. Its tmux server is
 isolated from working panes; it does not copy credentials.
+
+### Optional T3 adapter
+
+Use `--t3` to opt into native T3 delegation and our team/arena protocol.
+See the [integration lessons](../docs/lessons/pi-t3-integration.md) for verified
+behavior and remaining platform/UI limits.
+
+T3 provider configuration uses the absolute path to this repository's `pi.sh` as
+the binary and `--t3 --team` as launch arguments. T3 supplies `--mode rpc`.
+`--t3` explicitly selects native T3 child delegation for that invocation;
+`--team` independently initializes messaging when no saved choice exists.
+Omitting `--t3` retains terminal Pi's tmux implementation. Environment detection
+alone never selects T3, and failures do not silently fall back to tmux.
+
+The adapter uses existing T3 APIs. T3 owns native child processes and thread
+records; Pi retains saved-session writer protection and our team protocol.
+Locally bound profiles and execution checks restrict admitted children. No T3
+source, installed application or user state is patched by this repository.
+
+`pi/rpc-readiness.sh` installs verified native Pi RPC support through setup. The
+launcher checks the selected runtime before starting `--t3`. Unknown versions,
+unknown assets and incomplete patches are refused for T3 rather than bypassing
+admission. The package version and fallback dependency pin are not upgraded by
+this step. Native changes require a process restart; `/reload` does not replace
+already-loaded core code.
+
+The native support is client-neutral: original RPC requests wait for readiness,
+errors reject those requests, and cancellation remains responsive. It also adds
+cancellation-safe settlement and permission-checked command tool execution.
+These mechanisms do not enable the T3 adapter or team messaging by themselves.
+
+Offline RPC fork helpers deliberately disable extensions. `pi/launch-args.sh`
+omits our extension flags only for that metadata-copy invocation; ordinary and
+discovery launches retain them. Headless setup does not configure terminal
+preferences.
+
+Private checks use scripted models, not account inference:
+
+```sh
+bash pi/test-launch-args.sh
+bash pi/test-rpc-readiness.sh
+bash pi/test-t3-adapter.sh /path/to/candidate-package /path/to/candidate-pi
+bash pi/test-t3-runtime.sh --pi-cli /path/to/candidate-pi --agent-settings /path/to/private-settings.json
+```
+
+The adapter fixture is not an actual-host test. The runtime test uses the installed
+T3 backend unchanged with private state. Its leaf scenario verifies native
+creation, team request/reply/audit, completion delivery and no revival while T3
+retains the child process. See `pi/tests/t3-runtime/README.md` for its profile and
+launch-argument options. Arena checks cover candidates, cross-judge, synthesis,
+artifact verification and saved-mode restoration. Full STOP uses T3's public
+interrupt tool through another real Pi thread. These checks do not prove GUI
+rendering, every control path or unsupported platforms.
 
 ### iTerm2 selection and tmux integration
 
