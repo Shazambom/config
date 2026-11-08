@@ -62,6 +62,12 @@ for source in "$repo/pi/agent/extensions/prompt-snippets/snippets/"*.md; do
   cmp -s "$source" "$agent/extensions/prompt-snippets/snippets/${source##*/}" || fail 'Repository snippet not deployed'
 done
 jq -e 'has("subagents") | not' "$agent/settings.json" >/dev/null || fail 'Legacy subagent settings'
+# Remote sources must survive deployment unchanged, in either supported entry shape.
+jq -e --slurpfile source "$repo/pi/agent/settings.json" '
+  def remote_sources: [.packages[]? | (if type == "string" then . else .source end) |
+    select(test("^(git:|npm:|https?://|git@)"))];
+  remote_sources == ($source[0] | remote_sources)
+' "$agent/settings.json" >/dev/null || fail 'Remote package source changed during deployment'
 jq -e '.["observational-memory"].models | all(.[]; .provider == "openai-codex" and .id == "gpt-5.6-sol" and .thinking == "medium")' "$agent/settings.json" >/dev/null || fail 'Memory model drift'
 jq -e '.["observational-memory"].enabled == true' "$agent/settings.json" >/dev/null || fail 'Memory default disabled'
 jq -e '.["observational-memory"].compactAtContextTokens == 700000 and

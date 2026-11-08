@@ -65,7 +65,8 @@ jq --arg root "$repo/pi" --slurpfile upstream "$repo/pi/upstream.json" --rawfile
       ltrimstr("../upstream/") as $name |
       ($upstream[0][] | select(.name == $name)) as $pin |
       $root + "/upstream/" + $name + "-" + $pin.ref
-    else $root + ltrimstr("..") end;
+    elif startswith("../") then $root + ltrimstr("..")
+    else . end;
   ($commands | split("\u0000") | map(select(length > 0))) as $files |
   ($files | map({path: ., name: (split("/")[-1] | rtrimstr(".md"))}) |
     group_by(.name) | map(select(length > 1))) as $duplicates |

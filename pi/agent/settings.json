@@ -33,6 +33,7 @@
     "keymap": { "commands": { "redo": ["alt+r"] } }
   },
   "packages": [
+    "git:github.com/Shazambom/shazam-pi-goals@6e37d489941d7b04a384f4300b9891081bb16f5d",
     { "source": "../upstream/pi-vimmode", "skills": [], "prompts": [], "themes": [] },
     { "source": "../upstream/pi-interactive-subagents", "skills": [], "prompts": [], "themes": [] },
     { "source": "../upstream/pi-observational-memory", "skills": [], "prompts": [], "themes": [] },

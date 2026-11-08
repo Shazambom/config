@@ -134,6 +134,8 @@ Feature index:
   cancellation-safe settlement, command tool scopes and verified native deployment.
 - [Pi delivery](docs/lessons/pi-delivery.md): explicit checked setup, receipt
   identity, observer failures, cancellation uncertainty and runtime proof.
+- [Pi goals](docs/lessons/pi-goals.md): external Git packages, canonical ownership,
+  provider schemas, retry cues, native I/O and lifecycle cleanup.
 - [Pi T3 integration](docs/lessons/pi-t3-integration.md): opt-in RPC adaptation,
   native child admission, completion acknowledgement, arena and actual-host tests.
 - [Pi session lifecycle](docs/lessons/pi-session-lifecycle.md): saved-session
