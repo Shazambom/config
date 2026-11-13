@@ -23,7 +23,7 @@ Parse what the user is asking about:
 - "How is the auth service structured?", an architectural overview
 - "Walk me through what happens when a user submits a form", a runtime trace
 
-Identify the scope. If ambiguous, state your best-guess interpretation before exploring. Don't ask. Let the user redirect if you're off.
+Identify the scope. If plausible interpretations would require materially different investigations, clarify before delegating. Otherwise state a bounded interpretation and proceed.
 
 **Assess complexity to decide the approach:**
 

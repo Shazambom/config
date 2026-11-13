@@ -8,7 +8,7 @@ const bidiControls = [0x061c, 0x200e, 0x200f, 0x202a, 0x202b, 0x202c,
 const escaped = code => '\\u' + code.toString(16).padStart(4, '0');
 const progress = value => cueText({ lastResult: { source: 'saved', data: {
   tool_name: value, tool_call_id: value, reported_error: false,
-}}, outcome: 'recorded-results-only', unresolved: 0, gaps: [], paired: 1 });
+}}, outcome: 'recorded-results-only', unresolved: 0, unmatchedObservations: 0, gaps: [], paired: 1 });
 
 for (const code of bidiControls) {
   const character = String.fromCodePoint(code);
@@ -30,8 +30,8 @@ test('retain existing control and line separator escaping', () => {
     const value = `left${character}right`;
     assert(!scalar(value).includes(character));
     assert(scalar(value).includes(expected));
-    // The cue has intentional structural newlines; examine only the progress line.
-    const line = progress(value).split('\n').find(line => line.startsWith('Progress:'));
+    // The compact cue has intentional structural newlines; examine only its observation line.
+    const line = progress(value).split('\n').find(line => line.startsWith('Observed:'));
     assert(!line.includes(character));
     assert(line.includes(expected));
   }

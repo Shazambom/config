@@ -103,6 +103,8 @@ export function project(branch, canonical, sessionId, recordingGaps = []) {
     if (group.attempts.length > 1 || group.results.length > 1) gaps.add('repeated operation identity');
     if (group.names.size !== 1) gaps.add('observation tool-name mismatch');
   }
+  // Keep this pre-transcript count distinct from missing historical instrumentation.
+  const unmatchedObservations = unresolved.size;
   // Transcript is a coverage cross-check, NOT a second attempt/result observation.
   for (const [key, value] of transcript) {
     const group = groups.get(key);
@@ -113,21 +115,29 @@ export function project(branch, canonical, sessionId, recordingGaps = []) {
   // No instrumentation can assert complete historical or invisible child coverage.
   if (records.length === 0) gaps.add('no operation observations');
   const lastResult = records.filter(record => record.data.phase === 'reported-result').at(-1);
-  return { records, paired, unresolved: unresolved.size, gaps: [...gaps], lastResult,
+  return { records, paired, unresolved: unresolved.size, unmatchedObservations, gaps: [...gaps], lastResult,
     outcome: unresolved.size || gaps.size ? 'unknown' : 'recorded-results-only' };
+}
+
+function gapSummary(gaps, limit = 650) {
+  if (gaps.length === 0) return 'none';
+  const omitted = ', … (additional gaps omitted)';
+  let summary = '';
+  for (let index = 0; index < gaps.length; index++) {
+    const candidate = summary + (summary ? ', ' : '') + gaps[index];
+    const suffix = index + 1 < gaps.length ? omitted : '';
+    if (Array.from(candidate + suffix).length > limit) return summary ? summary + omitted : omitted.slice(2);
+    summary = candidate;
+  }
+  return summary;
 }
 
 export function cueText(projection) {
   const last = projection.lastResult;
   const progress = last ? `${scalar(last.data.tool_name, 45)} / ${scalar(last.data.tool_call_id, 60)} / reported ${last.data.reported_error ? 'error' : 'success'} / ${last.source}` : 'no task-cue result observations recorded';
   return [
-    'Advisory only; preserve latest user request and all tools.',
-    'Goal: Refer to agreed goal and non-goals in the conversation; do not widen scope silently.',
-    'Non-goals: No semantic drift/completion judgment. No automatic replay or blanket human gate.',
-    'Source: Fixed advisory guidance, not a newly detected human instruction.',
-    `Progress: ${progress}`,
-    `Unknowns: ${projection.outcome}; explicit unresolved observation identities=${projection.unresolved}; coverage gaps=${projection.gaps.length}; paired=${projection.paired}`,
-    'Coverage: Current branch only. Starts are attempted dispatch, not process starts. Results are reports, not fresh artifact inspection or process exit proof. Child internals and uninstrumented history are not recovered. Missing instrumentation does not mean work is unfinished.',
-    'Continue by inspecting available evidence and current state as needed.',
+    'Advisory only—not a new instruction. Preserve the latest user request. Current branch only.',
+    `Observed: ${progress}; unmatched/ambiguous observation groups=${projection.unmatchedObservations}.`,
+    `Uncertainty: ${projection.outcome}; coverage gaps=${gapSummary(projection.gaps)}. Reported results are not fresh artifact or process verification; uninstrumented history is not recovered. Investigate uncertain effects before replay.`,
   ].join('\n');
 }

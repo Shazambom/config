@@ -65,6 +65,14 @@ extra files, symlinks, and commands.
   the newest approved report automatically and investigates it in the verified
   Pi source checkout, not the complaint's origin project.
 
+- Repository-authored: `pi-optimize`, a manual-only scientific optimization
+  campaign. Invoke `/skill:pi-optimize <max-trials>` with a positive integer.
+  Each invocation creates a private, Git-ignored runbook and hypothesis checklist;
+  resuming preserves the campaign budget and ledger. Root chooses one trial at a
+  time from inspected evidence, with configuration/prompt changes before approved
+  runtime changes. It does not launch a sweep or guarantee improvement. Run
+  `bash claude/test-pi-optimize.sh` for isolated seeding and contract checks.
+
 ## Approved harness complaints
 
 Reports live in `~/.pi/complaints/` across projects. Nothing creates that store
@@ -106,3 +114,18 @@ A skill marked `disable-model-invocation` remains manual-only.
 Global skills work in Pi through `pi/agent/settings.json`. The deployed
 `claude-skills.ts` extension adds trusted project skills and preserves their
 original reference paths. Standalone Codex CLI configuration is not changed.
+
+## Skill doctor
+
+`skill-doctor` is bundled unchanged from `warpdotdev/common-skills`, commit
+`8792394ff1b655e0af451b8fabb68ef0cfcbd208`, with its upstream license, references,
+scorers, scripts, and assets. Upstream supports Pi (`--harness pi`). Setup archives
+only the exact recognized Markdown-only import before installing the full bundle;
+customized skills remain untouched. Run `bash claude/test-skill-doctor-setup.sh`
+to check deployment. Installation does not collect conversation history.
+
+The recognized `how` entry-point version also receives a private backup before
+its scope-clarification update. This migration replaces only an exact known
+`SKILL.md`; customized entry points and symlinks are skipped, and existing
+reference files remain untouched. Run `bash claude/test-how-setup.sh` to verify
+fresh seeding and upgrade/preservation cases.

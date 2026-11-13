@@ -69,7 +69,8 @@ test('append error ghosts stay unknown; forbidden arguments never recorded; bran
  f.setFail();f.handlers.tool_execution_start({type:'tool_execution_start',toolCallId:'c',toolName:'bash',args:{command:'SECRET'}},f.ctx);
  assert(!JSON.stringify(f.entries).includes('SECRET'));
  const messages=[{role:'user',content:'task'}];const output=f.handlers.context({messages},f.ctx).messages;
- assert(output.at(-1).content.includes('unknown'));assert(output.at(-1).content.includes('explicit unresolved observation identities=1'));
+ assert(output.at(-1).content.includes('unknown'));assert(output.at(-1).content.includes('unmatched/ambiguous observation groups=1'));
+ assert(output.at(-1).content.includes('observation save uncertain'));
  f.ctx.sessionManager.getBranch=()=>{throw Error('read failure');};assert.equal(f.handlers.context({messages},f.ctx).messages,messages);
  }finally{f.close();}
 });

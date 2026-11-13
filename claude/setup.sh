@@ -213,6 +213,43 @@ migrate_bundled_tdd() {
 }
 migrate_bundled_tdd
 
+# Update the recognized how entry point without replacing local reference files.
+migrate_bundled_how_scope() {
+  local target="$destination/skills/how" backup="$destination/how-skill-backup-scope-v1" digest
+  [[ ! -L "$destination" && ! -L "$destination/skills" ]] || return 0
+  [[ -d "$target" && ! -L "$target" && -f "$target/SKILL.md" && ! -L "$target/SKILL.md" ]] || return 0
+  [[ -f "$source_root/skills/how/SKILL.md" ]] || return 0
+  [[ ! -e "$backup" && ! -L "$backup" ]] || return 0
+  if command -v shasum >/dev/null 2>&1; then digest="$(shasum -a 256 < "$target/SKILL.md")"
+  elif command -v sha256sum >/dev/null 2>&1; then digest="$(sha256sum < "$target/SKILL.md")"
+  else return 0; fi
+  [[ "${digest%% *}" == fe503e7a9b2a3a7ad2622a2de6124cb06c466922fb44bc61817b49b52042b885 ]] || return 0
+  cmp -s "$target/SKILL.md" "$source_root/skills/how/SKILL.md" && return 0
+  mkdir -m 700 "$backup" || return 0
+  cp "$target/SKILL.md" "$backup/SKILL.md"
+  cp "$source_root/skills/how/SKILL.md" "$target/SKILL.md"
+  printf 'Backed up and updated how skill entry point: %s\n' "$backup/SKILL.md"
+}
+migrate_bundled_how_scope
+
+# Repair only the recognized Markdown-only import; customized skills stay intact.
+migrate_bundled_skill_doctor() {
+  local target="$destination/skills/skill-doctor" backup="$destination/skill-doctor-backup-markdown-v1" digest
+  [[ ! -L "$destination" && ! -L "$destination/skills" ]] || return 0
+  [[ -d "$target" && ! -L "$target" && -f "$target/SKILL.md" && ! -L "$target/SKILL.md" ]] || return 0
+  [[ ! -e "$backup" && ! -L "$backup" ]] || return 0
+  [[ -z "$(find "$target" -mindepth 1 ! -path "$target/SKILL.md" -print -quit)" ]] || return 0
+  if command -v shasum >/dev/null 2>&1; then digest="$(shasum -a 256 < "$target/SKILL.md")"
+  elif command -v sha256sum >/dev/null 2>&1; then digest="$(sha256sum < "$target/SKILL.md")"
+  else return 0; fi
+  [[ "${digest%% *}" == 9ded60ae72b5227827785edd4914faf5503258f07caf7f764942e050e98dfe44 ]] || return 0
+  [[ -f "$source_root/skills/skill-doctor/scripts/collect_sessions.py" ]] || return 0
+  mkdir -m 700 "$backup" || return 0
+  mv "$target" "$backup/skill-doctor"
+  printf 'Backed up Markdown-only skill-doctor to %s\n' "$backup/skill-doctor"
+}
+migrate_bundled_skill_doctor
+
 for source in "$source_root/skills"/*; do
   [[ -d "$source" ]] || continue
   target="$destination/skills/${source##*/}"

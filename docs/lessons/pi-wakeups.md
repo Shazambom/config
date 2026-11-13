@@ -153,14 +153,15 @@ Execution proof is macOS, Pi 1.0.4, Node 22.23.2. No universal exactly-once deli
 suspend behavior, Linux execution, hostile-process containment, or full production
 tool-inventory model reliability is claimed.
 
-## Live T3 busy versus idle diagnosis
+## Historical live T3 busy versus idle diagnosis
 
 A live T3 diagnostic reproduced a recurring timer advancing `next_at` during one
 continuous busy run, followed by cancellation before the run ended and no saved
-wake notice. `runtime.mjs` advances that deadline in its timer callback, holds
-recurring dispatch while `busy`, releases on `agent_end`, and clears pending local
-notices on cancellation. This behavior is before T3 rendering and is shared with
-terminal Pi; it does not establish that the historical reported timer fired.
+wake notice. The runtime at that checkpoint advanced deadlines in its timer
+callback, held recurring dispatch while `busy`, released on `agent_end`, and
+cleared pending local notices on cancellation. This describes the historical
+implementation, not the current `runtime.mjs`. The behavior preceded T3 rendering
+and was shared with terminal Pi; it did not establish that the reported timer fired.
 
 An idle control in the same diagnostic thread recorded the real `custom_message`
 wake entry, autonomous model response with the exact marker, and cancellation of
@@ -173,3 +174,33 @@ custom role. Calibrate the extraction against a known delivered notice before
 claiming absence. Changing recurring reminders from idle-only dispatch to a safe
 boundary during ongoing work is a behavior decision requiring approval and a
 regression proving that original work is not lost or cancelled.
+
+## Reload can retain an old sibling module
+
+A controlled installed-bundle probe loaded an `index.ts` importing `runtime.mjs`,
+replaced the private sibling, and called real `ctx.reload()`. The same process
+loaded the changed entrypoint but retained the old imported function. The next
+provider request still reflected the old behavior. Fresh-process B passed;
+a retained-A control correctly failed the same B assertion. See Node's
+[separate ESM cache](https://nodejs.org/api/esm.html#no-requirecache).
+
+A focused wake follow-up used real lifecycle ownership, saved private sessions,
+and the actual old/current controllers. After replacement and reload, the old
+function survived: three interval ticks crossed a held two-tool batch, but no
+notice reached the next provider request before `agent_end`. A fresh process
+with current bytes delivered the notice with the original task and both results.
+Both jobs were cancelled and both CLI processes exited normally. Evidence is in
+`.private/ux-reload.OAn0Tf/wake-cycle/`; this does not read live parent memory.
+A T3 peer also reported fresh-session recurrence before its first final reply.
+That report supports the contrast, not a general runtime guarantee.
+
+For quick private candidate cycles, resolve the installed CLI with
+`pi_real_command` in `pi/command-path.sh` and launch a fresh verified bundled Pi
+process directly with explicit Node, isolated HOME/agent state and a loopback
+provider. Do not run `pi.sh` or setup for each cycle. A new session is not a new
+process; do not infer refreshed dependencies from `/new` or successful reload.
+Use `pi/tests/wakeups-runtime/cli-batch.mjs` for the held-batch assertions and
+`pi/tests/workflow-rpc-fixture.mjs` for direct CLI/provider wiring; inspect their
+setup costs before reuse. Compare actual `pi/agent/wakeups/runtime.mjs` function
+identity and provider inputs, with `pi/agent/lifecycle/session-lifecycle.ts`
+ownership. This finding does not prescribe cache-busting or another IPC layer.

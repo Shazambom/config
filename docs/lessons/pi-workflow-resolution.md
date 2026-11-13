@@ -43,3 +43,41 @@ source review found no actionable issue. Scripted tool choice does not prove
 live-agent selection, physical keyboard behavior, or execution of the actual
 timeline investigation. Reload or start a new session after deployment; an
 already-loaded extension keeps its existing implementation.
+
+## Selected CLI versus npm prefix
+
+The first `claude/test-pi-optimize.sh` discovery check built its skills API path
+from `npm root -g`. It passed under one PATH but failed with `ERR_MODULE_NOT_FOUND`
+when portable Node's npm came first while Pi belonged to another installation.
+That was a test-path mismatch, not failed skill discovery.
+
+Resolve the selected `pi` through `pi/command-path.sh` and `pi_real_command`,
+then locate the API relative to that resolved CLI. Record the CLI, API path, and
+actual version in proof artifacts. Test with portable Node first in PATH as well
+as the ordinary PATH. `claude/test-pi-optimize.sh` exercises isolated seeding and
+the selected runtime's parser/catalog filtering; it does not prove live-model
+budget discipline or workflow execution.
+
+## Complete skill bundles
+
+A Markdown-only `skill-doctor` import was discoverable but could not run: its
+first required reference, collector, rubrics, and renderer were absent. Discovery
+is not proof of a usable skill. Bundle referenced resources and upstream licensing,
+and verify deployed files, not only `SKILL.md`. `claude/test-skill-doctor-setup.sh`
+covers the exact-import backup migration, fresh install, idempotence, preservation
+of customization and symlinks, and the deployed collector entry point. The
+migration deliberately leaves unrecognized or partially customized installs alone.
+
+## Consequential scope ambiguity
+
+The `how` skill prescribed guessing ambiguous scope and waiting for user
+redirection. A retained investigation followed the wrong trigger path and needed
+a second trace after clarification. Replace that blanket rule with clarification
+only when plausible interpretations require materially different investigations;
+keep bounded questions moving without a universal approval gate.
+
+`claude/test-how-setup.sh` checks installation of the approved paragraph, an exact
+entry-point backup migration, preservation of custom references and entry points,
+symlink refusal, and idempotence. Runtime `load_workflow("how")` confirmed the
+installed wording after `init.sh --pi`. These prove deployment, not improved model
+behavior; no prospective comparison has established the proposed benefit.

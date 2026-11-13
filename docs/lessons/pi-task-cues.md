@@ -1,7 +1,8 @@
 # Root task cues and observed recovery
 
-Private candidate only. Settings activation and real identity integration belong
-to the integration owner. Nothing here grants permission to publish or deploy.
+The compact cue is published through the repository-owned setup path. Setup does
+not restart active sessions: a loaded extension keeps its existing function until
+an explicit reload or a fresh process.
 
 ## Preserve input, do not infer authority
 
@@ -36,15 +37,24 @@ process start/exit receipt, proof of current artifact contents, or recovery of
 invisible child work. The cue must not replay an uncertain operation or impose a
 blanket approval gate. The agent can inspect evidence and continue normally.
 
-## Label missing instrumentation without implying unfinished work
+## Separate observation groups from instrumentation coverage
 
 An old canonical call/result pair can lack task-cue observations. Keep that
-coverage unknown, but label the absence as no task-cue result observations rather
-than no recorded result. The counter is `explicit unresolved observation
-identities`, not unfinished operations. Missing instrumentation does not mean
-work is unfinished. Do not add transcript fallback or change projection counts
-to repair wording. `pi/tests/task-cues/coverage-labels.test.mjs` covers complete
-historical pairs, call-only history, repeated attempts and live-only provenance.
+coverage unknown, but do not present the projection's potentially large
+`unresolved` union as unfinished work. `unmatchedObservations` captures unmatched
+or ambiguous custom-observation groups before transcript coverage is added;
+orphan results, missing results, duplicates and name mismatches each keep their
+actual group uncertain. Existing `unresolved`, `outcome` and `gaps` semantics stay
+unchanged.
+
+The renderer is three lines: advisory scope, latest reported observation with
+saved/live-only provenance, then uncertainty and coverage gaps. It says reported
+results are not fresh verification and asks the agent to investigate uncertain
+effects before replay. Gap details are bounded with an explicit omission marker
+so the 1,200-character admission cap does not silently drop a useful cue.
+`coverage-labels.test.mjs`, `compact-ux.test.mjs` and
+`feedback-iteration.test.mjs` cover legacy history, true unmatched groups,
+orphan results, duplicate/name mismatch uncertainty and maximum gap rendering.
 
 ## Escape the complete bidi-control set
 
@@ -67,14 +77,19 @@ unrelated owned sentinel must survive the interrupt and is cleaned up separately
 
 `pi/tests/task-cues/observations.test.mjs` covers pair counts, source provenance,
 malformed JSON, escaping, identity suppression, image/object preservation and
-append ghosts. Its initial identity fixture supplied a noncanonical temporary
-path on macOS. The guard correctly suppressed cues. Canonicalizing the fixture
-owner path fixed the observation method; the production comparison was retained.
+append ghosts. Together, the focused plain-Node component set has 50 cases. Its
+initial identity fixture supplied a noncanonical temporary path on macOS. The
+guard correctly suppressed cues. Canonicalizing the fixture owner path fixed the
+observation method; the production comparison was retained.
 
 The dedicated task-cue runtime fixture uses identity and lifecycle stubs; label
-those receipts accordingly. Separate integration runs used the real identity
-producer and lifecycle with the frozen bundle: standalone root images,
-reload/new/fork and interrupted-root recovery; actual T3 root with team OFF,
+those receipts accordingly. A separate fresh-process loopback run used the real
+identity producer and lifecycle and checked the exact three-line cue plus a
+forwarding-drop control while preserving the original task and tool results. It
+is runtime proof, not wording review or arbitrary-model adherence. Other
+integration runs used the real identity producer and lifecycle with the frozen
+bundle: standalone root images, reload/new/fork and interrupted-root recovery;
+actual T3 root with team OFF,
 bound-child cue suppression, normal helper completion and interrupted-root
 recovery. Scripted providers prove the exercised input/output path, not semantic
 adherence by arbitrary models. Standalone spawned-child proof is an accepted unverified gap: the user stopped

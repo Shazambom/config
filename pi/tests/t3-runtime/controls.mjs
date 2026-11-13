@@ -10,6 +10,7 @@ export function controlsFixture(work,reply) {
   writeFileSync(join(work,'agent/agents/proof-control.md'),profile);
   if(process.env.CONFIG_PI_RUNTIME_DIR)writeFileSync(join(process.env.CONFIG_PI_RUNTIME_DIR,'../repo/pi/agent/agents/proof-control.md'),profile);
   let rootId,launched=false,requestId,answered=false,steered=false,staleAttempted=false,staleRejected=false,childRequests=0,questionObserved=false,steeringObserved=false,childFinished=false;
+  let sentId,received=false,held=false;
   let release;const steeringReceipt=new Promise(resolve=>{release=resolve;});
   const call=(tool,args)=>({tool,args});
   const text=messages=>JSON.stringify(messages);
@@ -24,7 +25,9 @@ export function controlsFixture(work,reply) {
       if(!input.messages.some(m=>m.role==='tool'))return call('ask_question',{question:'CONTROL_QUESTION_TEXT'});
       assert(transcript.includes('CONTROL_ANSWER_TEXT'),'native UI answer reached child model');
       if(!transcript.includes('CONTROL_STEER_TEXT')) {
+        held=true;
         await Promise.race([steeringReceipt,new Promise((_,reject)=>setTimeout(()=>reject(new Error('native steering receipt timeout')),15000).unref())]);
+        held=false;
         return {text:'CHILD_PROCESSED_ANSWER'};
       }
       steeringObserved=true;childFinished=true;return {text:'CHILD_CONTROL_DONE'};
@@ -38,7 +41,18 @@ export function controlsFixture(work,reply) {
     if(answered&&!steered&&transcript.includes('Answered user question')) {
       steered=true;return call('subagent_message',{name:'proof-control',message:'CONTROL_STEER_TEXT'});
     }
-    if(steered&&input.messages.some(m=>m.role==='tool'&&/steer/i.test(text(m))))release();
+    if(steered&&!sentId) {
+      const match=input.messages.filter(m=>m.role==='tool').map(text).join('\n').match(/Sent message ([a-f0-9]+) to proof-control\./);
+      if(match)sentId=match[1];
+    }
+    if(sentId&&!received&&transcript.includes(`proof-control received message ${sentId}.`)) {
+      assert(held,'receipt arrives while original child request is held');
+      assert.equal(childRequests,2,'no extra recipient inference required for runtime receipt');
+      received=true;
+      writeFileSync(join(work,'receipt-parent-input.json'),JSON.stringify(input,null,2));
+      writeFileSync(join(work,'held-receipt-proof.json'),JSON.stringify({sentId,received,held,childRequests,childFinished}));
+      release();
+    }
     if(transcript.includes('Delegated task ')&&transcript.includes('[completed]')&&transcript.includes('CHILD_CONTROL_DONE')) {
       if(!staleAttempted){staleAttempted=true;return call('subagent_message',{name:'proof-control',requestId,message:'STALE_ANSWER_MUST_NOT_DELIVER'});}
       const last=input.messages.filter(m=>m.role==='tool').at(-1);
@@ -52,13 +66,14 @@ export function controlsFixture(work,reply) {
     const state=JSON.parse(readFileSync(join(dir,'state.json'),'utf8'));
     const children=Object.values(state.members).filter(m=>m.parent!==null);
     assert.equal(state.desired,false);assert.equal(children.length,1,'stale answer did not create a new child');
-    assert(questionObserved&&answered&&steeringObserved&&staleRejected);
+    assert(questionObserved&&answered&&steeringObserved&&staleRejected&&received);
+    assert.equal(childRequests,3,'original answer and steering complete without receipt-only child turn');
     assert.equal(children[0].deliverable,false);assert.equal(children[0].live,false);
     assert(!existsSync(join(dir,'messages.jsonl')),'question/steering did not masquerade as peer chat');
     const native=execFileSync('sqlite3',[join(work,'state/userdata/statev2.sqlite'),"select payload_json from orchestration_events where event_type='runtime-request.updated' order by sequence;"],{encoding:'utf8'}).trim().split('\n').filter(Boolean).map(JSON.parse).filter(r=>r.id===requestId);
     assert(native.some(r=>r.kind==='user_input'&&r.status==='pending'),'actual native user-input request existed');
     assert.equal(native.at(-1).status,'resolved','stale answer did not reopen native request');
-    return {nativeRequestKind:'user_input',nativeRequestFinalStatus:native.at(-1).status,rootId,childThreadId:children[0].id,childPid:children[0].pid,requestId,questionObserved,steeringObserved,staleRejected,childRequests,teamDesired:state.desired,retainedChildAlive:alive(children[0].pid)};
+    return {sentId,received,nativeRequestKind:'user_input',nativeRequestFinalStatus:native.at(-1).status,rootId,childThreadId:children[0].id,childPid:children[0].pid,requestId,questionObserved,steeringObserved,staleRejected,childRequests,teamDesired:state.desired,retainedChildAlive:alive(children[0].pid)};
   }
   return {decide,verify,setRoot:id=>{rootId=id;}};
 }

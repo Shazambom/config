@@ -319,6 +319,25 @@ exercise all three `/design` selectors in temporary Git projects, checks the
 resulting packages and snapshots, and confirms the original source stayed intact.
 This last check uses account quota.
 
+## Task tracking
+
+The `todo` tool keeps a session-branch task list with `add`, `list`, `toggle` and
+`clear` actions. `/todos` displays it in interactive Pi. Guidance in
+`pi/agent/AGENTS.md` asks for meaningful milestones covering the full assigned
+task, including verification, and skips bookkeeping for simple requests.
+Restricted child profiles without `todo` use ordinary progress notes.
+
+State is saved with tool results and restored on resume or branch navigation.
+`toggle` reverses the current state, so inspect the list before retrying an
+uncertain call. Existing extension configuration can exclude it with
+`-./extensions/todo.ts`; no separate feature switch is needed.
+
+The source is adapted from Pi 1.0.4's upstream `examples/extensions/todo.ts`, with
+copied snapshots to protect earlier session history. `bash pi/test-todo.sh`
+checks automatic loading, saved state, branch reconstruction and exclusion using
+the installed CLI and a synthetic local provider. See
+[task tracking lessons](../docs/lessons/pi-task-tracking.md) for evidence limits.
+
 ## Installed extensions
 
 `init.sh --pi` installs npm dependencies from the lockfile and fetches upstream
@@ -580,6 +599,26 @@ retain their existing diagnostic path. A confirmed missing pane without a receip
 reports an unknown exit rather than waiting forever or inventing success.
 `bash pi/test-subagent-completion.sh` checks native child CLI completion, parent
 notification and pane cleanup with a scripted local provider.
+
+#### Steering receipts
+
+For active Pi children, `subagent_message` returns `Sent message ID to tester.`
+An automatic `tester received message ID.` follows when that recipient runtime's
+input hook sees the matching assignment envelope. This is not queue admission,
+model input, comprehension or completion. It needs no recipient tool call or
+extra turn and works with team messaging OFF, through tmux or the native T3
+adapter. Native host acceptance alone does not produce a Pi receipt.
+
+Active Claude steering keeps raw forwarding and Sent wording, without an automatic
+received receipt. Native question answers and completed-assignment requeues retain
+their existing results without these receipts. Notification errors do not terminate
+healthy child work; active scans retry. A failed post-exit notification has no
+guaranteed later retry, and crash/restart recovery is not provided.
+
+Use a fresh Pi process after deployment. `/reload` can retain cached imported
+modules even when the entrypoint refreshes. Run `bash pi/test-steering-receipts.sh`
+for isolated stock-CLI and controlled-native checks; installed-host coverage is in
+`pi/test-t3-runtime.sh --controls`. See [receipt lessons](../docs/lessons/pi-steering-receipts.md).
 
 Plain `pi` uses the auto-tmux `pi.sh` launcher. Interactive launches outside
 tmux create a session; launches inside tmux reuse the current pane. Print/RPC,

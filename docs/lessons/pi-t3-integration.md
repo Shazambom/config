@@ -138,6 +138,70 @@ In inspected T3 0.1.7:
 Keep authentication tokens process-local and out of bindings, errors and logs.
 Do not call an endpoint read-only based on its name or annotation alone.
 
+## Contact a verified existing T3 helper
+
+A live coordination check found the matching Pi helper through local metadata,
+then `thread send ... --json --wait` returned its acknowledgement and confirmed
+Pi session identity. `thread list --project "$PWD"` excluded children, and a Pi
+session UUID was not the native T3 thread ID. A known, verified T3 ID needs no SQL.
+This is an explicit contact procedure, not a replacement for subagent messaging.
+
+Discover the installed CLI without installing or starting another backend:
+
+```bash
+apps=()
+for app in /Applications/'T3 Code'*.app "$HOME"/Applications/'T3 Code'*.app; do
+  [[ -d "$app" ]] && apps+=("$app")
+done
+[[ ${#apps[@]} == 1 ]] || { echo 'Select the active T3 app explicitly' >&2; exit 1; }
+app=${apps[0]}
+exe=$(plutil -extract CFBundleExecutable raw "$app/Contents/Info.plist") || exit 1
+t3() {
+  ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/$exe" \
+    "$app/Contents/Resources/app.asar/apps/server/dist/bin.mjs" "$@"
+}
+```
+
+If only a Pi UUID is known, use the schema-dependent metadata fallback below.
+Set `uuid` to that UUID and `base` to the active backend's configuration base
+before running it. The default base is `$HOME/.t3`; a custom `--base-dir` must
+match both database discovery and CLI invocation. Check that installed CLI's
+help for option placement. This fallback is not a new public API.
+
+```bash
+base=${base:-"$HOME/.t3"}
+[[ ${uuid:-} =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]] || exit 1
+rows=$(sqlite3 -readonly -json "$base/userdata/statev2.sqlite" "
+SELECT DISTINCT ptt.thread_id, p.workspace_root, ptt.provider,
+ json_extract(ptt.payload_json, '$.nativeThreadRef.nativeId') AS native_id,
+ ptt.status
+FROM orchestration_v2_projection_provider_threads ptt
+JOIN orchestration_v2_projection_threads t ON t.thread_id = ptt.thread_id
+JOIN projection_projects p ON p.project_id = t.project_id
+WHERE ptt.thread_id = '$uuid' OR ptt.provider_session_id = '$uuid'
+ OR instr(json_extract(ptt.payload_json, '$.nativeThreadRef.nativeId'), '$uuid') > 0;") || exit 1
+repo=$(pwd -P)
+thread=$(jq -er --arg repo "$repo" '
+  if length == 1 and .[0].workspace_root == $repo and .[0].provider == "pi"
+  then .[0].thread_id else error("Ambiguous or mismatched helper") end
+' <<< "${rows:-[]}") || exit 1
+[[ -n "$thread" ]] || exit 1
+# Inspect only these metadata fields; confirm native_id and status before sending.
+printf '%s\n' "$rows" | jq .
+# After identity confirmation, with CLI base-dir routing matched if customized:
+t3 thread send "$thread" 'Bounded coordination request; please acknowledge.' --json --wait
+```
+
+The Pi UUID can be embedded in a session filepath inside `native_id`, hence
+`instr` rather than bare equality. Refuse ambiguous matches or unexpected repo
+or provider; never choose the first row blindly. Keep IDs and metadata local,
+without printing tokens, discovery secrets or broad histories. Do not use native
+CLI `show`/`read` for discovery: reading child output can consume completion.
+`thread send` queues work rather than interrupting the current turn. `--wait`
+deliberately reads this new run's reply when an acknowledgement is wanted.
+Source references are T3 migration 055, the provider-pi adapter and
+`cli/thread.ts`; app discovery follows `pi/test-t3-runtime.sh`.
+
 ## Settlement and process lifetime differ
 
 T3 retains idle Pi processes after task completion. Shutdown-only retirement lets

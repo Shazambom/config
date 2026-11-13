@@ -1,5 +1,4 @@
 diff --git a/pi-extension/subagents/index.ts b/pi-extension/subagents/index.ts
-index 7e20a0f..8052297 100644
 --- a/pi-extension/subagents/index.ts
 +++ b/pi-extension/subagents/index.ts
 @@ -1,5 +1,11 @@
@@ -15,7 +14,15 @@ index 7e20a0f..8052297 100644
  import { Type, type Static } from "@sinclair/typebox";
  import { Box, Text, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
  import { dirname, join, resolve } from "node:path";
-@@ -105,7 +111,7 @@ const SubagentParams = Type.Object({
+@@ -14,6 +20,7 @@
+   unlinkSync,
+ } from "node:fs";
+ import { homedir } from "node:os";
++import { randomUUID } from "node:crypto";
+ import {
+   isMuxAvailable,
+   muxSetupHint,
+@@ -105,7 +112,7 @@
          "Has no effect on which agent runs — use `agent` for that.",
      }),
    ),
@@ -24,7 +31,16 @@ index 7e20a0f..8052297 100644
    cwd: Type.Optional(
      Type.String({
        description:
-@@ -862,7 +868,12 @@ function applySandboxToParts(
+@@ -600,6 +607,8 @@
+  * State for a launched (but not yet completed) subagent.
+  */
+ interface RunningSubagent {
++  pendingMessages?: Map<string, boolean>;
++  receiptLine?: number;
+   id: string;
+   name: string;
+   task: string;
+@@ -862,7 +871,12 @@
    // was intentionally unrestricted (e.g. a fork clone) and is replayed as-is.
    if (loadout.toolAllowlist) {
      parts.push("--no-extensions");
@@ -38,7 +54,63 @@ index 7e20a0f..8052297 100644
  
      const extPaths = new Set<string>();
      for (const tool of loadout.toolAllowlist.split(",")) {
-@@ -1167,14 +1178,16 @@ function startWidgetRefresh() {
+@@ -1017,9 +1031,10 @@
+ function handleSubagentSteer(
+   params: { name?: string; message?: string },
+   send: (surface: string, command: string) => void = sendCommand,
++  check = () => {},
+ ) {
+-  const message = params.message?.trim();
+-  if (!message) {
++  const message = params.message;
++  if (!message?.trim()) {
+     const err = "`message` is required to steer a running subagent.";
+     return { content: [{ type: "text" as const, text: err }], details: { error: err } };
+   }
+@@ -1036,8 +1051,20 @@
+   const now = Date.now();
+   observeRunningSubagent(running, now);
+ 
+-  const steer = steerSubagent(running, message, send);
++  check();
++  let messageId: string | undefined;
++  let wire = message;
++  if (running.cli !== "claude") {
++    running.pendingMessages ??= new Map();
++    running.receiptLine ??= countSessionEntryLines(running.sessionFile);
++    do { messageId = randomUUID().replaceAll("-", "").slice(0, 12); } while (running.pendingMessages.has(messageId));
++    running.pendingMessages.set(messageId, false);
++    wire = "SUBAGENT_MESSAGE_V1:" + JSON.stringify({ messageId, assignmentId: running.id, message });
++  }
++  try { check(); } catch (error) { if (messageId) running.pendingMessages!.delete(messageId); throw error; }
++  const steer = steerSubagent(running, wire, send);
+   if ("error" in steer) {
++    if (messageId) running.pendingMessages!.delete(messageId);
+     return {
+       content: [{ type: "text" as const, text: steer.error }],
+       details: { error: steer.error, id: running.id, name: running.name },
+@@ -1051,10 +1078,9 @@
+     content: [{
+       type: "text" as const,
+       text:
+-        `Message delivered to running subagent "${running.name}". It picks this up at its next ` +
+-        `turn boundary. If it exits, its result still arrives as a steer message.`,
++        messageId ? `Sent message ${messageId} to ${running.name}.` : `Sent message to ${running.name}.`,
+     }],
+-    details: { id: running.id, name: running.name, status: "steered" },
++    details: { id: running.id, name: running.name, status: "steered", messageId, receiptSupported: !!messageId },
+   };
+ }
+ 
+@@ -1139,6 +1165,7 @@
+   reservedNames,
+   steerSubagent,
+   handleSubagentSteer,
++  deliverInputReceipts,
+   resolveResultPresentation,
+   resolveResumeLaunchBehavior,
+   runningSubagents,
+@@ -1167,14 +1194,16 @@
   */
  async function launchSubagent(
    params: typeof SubagentParams.static,
@@ -58,7 +130,7 @@ index 7e20a0f..8052297 100644
    const effectiveTools = agentDefs?.tools;
    const effectiveSkills = agentDefs?.skills;
    const effectiveThinking = agentDefs?.thinking;
-@@ -1205,6 +1218,7 @@ async function launchSubagent(
+@@ -1205,6 +1234,7 @@
    // For new surfaces, pause briefly so the shell is ready before sending the command.
    const surfacePreCreated = !!options?.surface;
    const surface = options?.surface ?? createSurface(params.name);
@@ -66,7 +138,7 @@ index 7e20a0f..8052297 100644
    if (!surfacePreCreated) {
      await new Promise<void>((resolve) => setTimeout(resolve, getShellReadyDelayMs()));
    }
-@@ -1315,7 +1329,8 @@ async function launchSubagent(
+@@ -1315,7 +1345,8 @@
    // ── Pi CLI path ──
  
    // Build pi command
@@ -76,7 +148,7 @@ index 7e20a0f..8052297 100644
    parts.push("--session", shellEscape(subagentSessionFile));
  
    const subagentDonePath = join(SUBAGENTS_DIR, "subagent-done.ts");
-@@ -1355,9 +1370,12 @@ async function launchSubagent(
+@@ -1355,9 +1386,12 @@
    // Apply model, identity, and the default-deny tool/extension restriction via
    // the shared helper (same code path resume uses — they can't drift).
    applySandboxToParts(parts, loadout, { artifactDir, name: params.name });
@@ -90,7 +162,7 @@ index 7e20a0f..8052297 100644
  
    if (resolvedAgentDir) {
      envParts.push(`PI_CODING_AGENT_DIR=${shellEscape(resolvedAgentDir)}`);
-@@ -1414,7 +1432,7 @@ async function launchSubagent(
+@@ -1414,7 +1448,7 @@
    const cdPrefix = effectiveCwd ? `cd ${shellEscape(effectiveCwd)} && ` : "";
  
    const piCommand = cdPrefix + envPrefix + parts.join(" ");
@@ -99,7 +171,7 @@ index 7e20a0f..8052297 100644
    const launchScriptName = `${(params.name || "subagent")
      .toLowerCase()
      .replace(/[^a-z0-9\s-]/g, "")
-@@ -1422,8 +1440,11 @@ async function launchSubagent(
+@@ -1422,8 +1456,11 @@
      .replace(/-+/g, "-")
      .replace(/^-|-$/g, "") || "subagent"}-${id}.sh`;
    const launchScriptFile = join(artifactDir, "subagent-scripts", launchScriptName);
@@ -111,7 +183,7 @@ index 7e20a0f..8052297 100644
      scriptPreamble: [
        `# Subagent launch script for ${params.name}`,
        `# Generated: ${new Date().toISOString()}`,
-@@ -1451,6 +1472,14 @@ async function launchSubagent(
+@@ -1451,6 +1488,14 @@
  
    runningSubagents.set(id, running);
    return running;
@@ -126,7 +198,31 @@ index 7e20a0f..8052297 100644
  }
  
  /**
-@@ -1524,6 +1553,7 @@ function deliverPendingQuestion(running: RunningSubagent): void {
+@@ -1521,9 +1566,31 @@
+   );
+ }
+ 
++function deliverInputReceipts(running: RunningSubagent): void {
++  if (!latestPi || !running.pendingMessages || ![...running.pendingMessages.values()].includes(false)) return;
++  let entries: ReturnType<typeof getNewEntries>;
++  try { entries = getNewEntries(running.sessionFile, running.receiptLine ?? 0); }
++  catch { return; } // A partial JSONL tail is retried without advancing the cursor.
++  for (const entry of entries) {
++    const receipt = entry as any;
++    if (receipt.type !== "custom" || receipt.customType !== "subagent-message-received") continue;
++    const { messageId, assignmentId } = receipt.data ?? {};
++    if (assignmentId !== running.id || running.pendingMessages.get(messageId) !== false) continue;
++    try {
++      latestPi.sendMessage({ customType: "subagent-message-received", content: running.name + " received message " + messageId + ".", display: true, details: { messageId, assignmentId } }, { triggerTurn: true, deliverAs: "steer" });
++    } catch (error) {
++      console.error("Subagent input receipt notification failed; retaining it for the next scan.", error);
++      return;
++    }
++    running.pendingMessages.set(messageId, true);
++  }
++  running.receiptLine = (running.receiptLine ?? 0) + entries.length;
++}
++
  async function watchSubagent(
    running: RunningSubagent,
    signal: AbortSignal,
@@ -134,7 +230,7 @@ index 7e20a0f..8052297 100644
  ): Promise<SubagentResult> {
    const { name, task, surface, startTime, sessionFile } = running;
  
-@@ -1532,6 +1562,7 @@ async function watchSubagent(
+@@ -1532,12 +1599,15 @@
        interval: 1000,
        sessionFile,
        sentinelFile: running.sentinelFile,
@@ -142,7 +238,15 @@ index 7e20a0f..8052297 100644
        onTick() {
          observeRunningSubagent(running);
          deliverPendingQuestion(running);
-@@ -1570,7 +1601,7 @@ async function watchSubagent(
++        deliverInputReceipts(running);
+       },
+     });
+ 
++    deliverInputReceipts(running); // Receipt can precede a fast exit between watcher ticks.
+     const elapsed = Math.floor((Date.now() - startTime) / 1000);
+ 
+     if (running.cli === "claude") {
+@@ -1570,7 +1640,7 @@
          try { unlinkSync(running.sentinelFile + ".transcript"); } catch {}
        }
  
@@ -151,7 +255,7 @@ index 7e20a0f..8052297 100644
        runningSubagents.delete(running.id);
  
        return { name, task, summary, exitCode: result.exitCode, elapsed, ...(sessionId ? { claudeSessionId: sessionId } : {}) };
-@@ -1598,7 +1629,7 @@ async function watchSubagent(
+@@ -1598,7 +1668,7 @@
      const stats = existsSync(sessionFile) ? summarizeSessionStats(sessionFile) : null;
      const subagentSessionId = existsSync(sessionFile) ? getSessionId(sessionFile) : null;
  
@@ -160,7 +264,7 @@ index 7e20a0f..8052297 100644
      runningSubagents.delete(running.id);
  
      return {
-@@ -1614,7 +1645,7 @@ async function watchSubagent(
+@@ -1614,7 +1684,7 @@
      };
    } catch (err: any) {
      try {
@@ -169,7 +273,7 @@ index 7e20a0f..8052297 100644
      } catch {}
      runningSubagents.delete(running.id);
  
-@@ -1642,6 +1673,21 @@ async function watchSubagent(
+@@ -1642,6 +1712,21 @@
  
  export default function subagentsExtension(pi: ExtensionAPI) {
    latestPi = pi;
@@ -191,7 +295,7 @@ index 7e20a0f..8052297 100644
    // Capture the UI context for widget updates
    pi.on("session_start", (_event, ctx) => {
      latestCtx = ctx;
-@@ -1685,14 +1731,14 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -1685,14 +1770,14 @@
        name: "subagent",
        label: "Subagent",
        description:
@@ -208,23 +312,24 @@ index 7e20a0f..8052297 100644
          "This is a fire-and-forget async tool: the call returns immediately with only an acknowledgement. " +
          "When the sub-agent finishes, the harness AUTOMATICALLY delivers its result as a steer message that wakes you up and starts a new turn — you do not need to do anything to receive it. " +
          "DO NOT write polling loops, sleep/wait commands, tail/watch scripts, or repeatedly read session/log files to detect completion. DO NOT call subagents_list or any other tool to 'check' status. All of that is wasted work — the harness handles delivery for you. " +
-@@ -1758,6 +1804,15 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -1756,7 +1841,16 @@
+               error: SUBAGENT_ALLOWLIST ? "agent not in allowlist" : "unknown agent",
+             },
            };
-         }
- 
++        }
++
 +        if (t3.enabled()) {
 +          params.model = await preflightModel(ctx, params.model ?? loadAgentDefaults(params.agent)?.model);
 +          return t3.launch(_toolCallId, params, ctx, _signal);
-+        }
+         }
 +        const ownership = captureWorkerLaunch();
 +        const parentIncarnation = captureTeamParent(ctx);
 +        const profileModel = loadAgentDefaults(params.agent)?.model;
 +        params.model = await preflightModel(ctx, params.model ?? profileModel);
-+
+ 
          // Validate prerequisites (need mux + a session file to derive the
          // artifact dir that hosts this session's name registry).
-         if (!isMuxAvailable()) {
-@@ -1801,7 +1856,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -1801,7 +1895,7 @@
          // from then on uniqueRunningName tracks it via the running map.
          let running;
          try {
@@ -233,7 +338,7 @@ index 7e20a0f..8052297 100644
          } finally {
            if (reservedName) reservedNames.delete(reservedName);
          }
-@@ -1963,8 +2018,9 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -1963,8 +2057,9 @@
          "Project-local agents override global ones with the same name.",
        parameters: Type.Object({}),
  
@@ -245,7 +350,7 @@ index 7e20a0f..8052297 100644
  
          if (list.length === 0) {
            return {
-@@ -1981,7 +2037,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -1981,7 +2076,7 @@
          });
  
          return {
@@ -254,16 +359,19 @@ index 7e20a0f..8052297 100644
            details: { agents: list },
          };
        },
-@@ -2011,7 +2067,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -2011,9 +2106,9 @@
        description:
          "Send a message to a subagent by name. Names are unique within your session and persist after a subagent finishes, " +
          "so the SAME name works whether the subagent is running or finished: if it is still running, your message steers its live session; " +
 -        "if it has finished, your message resumes that session and continues it. " +
 +        "if it has finished, terminal Pi resumes that session; --t3 queues a new exact assignment on its existing native thread and conversation. Peer DMs never resume completed work. " +
          "`name` and `message` are both required. " +
-         "Steering a running subagent returns immediately with a local acknowledgement and does NOT, by itself, emit a new result. " +
+-        "Steering a running subagent returns immediately with a local acknowledgement and does NOT, by itself, emit a new result. " +
++        "Active Pi steering returns Sent with a small message ID when its admitted recipient session supports input receipts. Native host acceptance alone is not a Pi receipt. User-question answers and completed-assignment requeues keep their existing results without automatic received receipts. An automatic received receipt means the recipient runtime input hook saw that assignment envelope, not queue admission, model input, comprehension or completion. No recipient tool call or extra turn is needed. Active Claude steering confirms Sent only and has no automatic received receipt. " +
          "Resuming is a fire-and-forget async call: when the resumed sub-agent finishes, the harness AUTOMATICALLY delivers its result as a steer message that wakes you up. " +
-@@ -2022,6 +2078,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+         "DO NOT poll, sleep, tail logs, or read session files to detect completion — the harness handles delivery. " +
+         "DO NOT fabricate or assume results. After calling, either end your turn or work on other independent tasks.",
+@@ -2022,6 +2117,7 @@
          "`name` and `message` are required. Steering returns immediately; resuming delivers its result later as a steer message. " +
          "Do not poll or fabricate results.",
        parameters: Type.Object({
@@ -271,7 +379,16 @@ index 7e20a0f..8052297 100644
          name: Type.String({
            description:
              "Exact display name of the subagent. Steers it if it is still running; resumes its session if it has finished.",
-@@ -2072,6 +2129,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -2049,7 +2145,7 @@
+             theme.fg("success", "✓") +
+               " " +
+               theme.fg("toolTitle", theme.bold(details.name ?? "subagent")) +
+-              theme.fg("dim", " — message delivered"),
++              theme.fg("dim", details.messageId ? ` — sent message ${details.messageId}` : " — sent"),
+             0,
+             0,
+           );
+@@ -2072,6 +2168,7 @@
        },
  
        async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -279,7 +396,27 @@ index 7e20a0f..8052297 100644
          const requestedName = params.name?.trim();
          if (!requestedName) {
            const err = "Provide the subagent's `name` to steer (if running) or resume (if finished).";
-@@ -2142,6 +2200,11 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -2086,7 +2183,8 @@
+         // A name that matches a currently-running subagent always steers it.
+         const runningMatch = Array.from(runningSubagents.values()).find((r) => r.name === requestedName);
+         if (runningMatch) {
+-          return handleSubagentSteer({ name: requestedName, message: params.message });
++          const admission = captureWorkerLaunch();
++          return handleSubagentSteer({ name: requestedName, message: params.message }, undefined, () => { _signal?.throwIfAborted(); admission.assertCurrent(); });
+         }
+ 
+         // ── Resume a finished session by name ──
+@@ -2125,7 +2223,8 @@
+         for (const r of runningSubagents.values()) {
+           if (resolve(r.sessionFile) === resolve(sessionPath)) {
+             const err = `Subagent "${requestedName}" is still running as "${r.name}". Your message will steer it; resending as a steer.`;
+-            return handleSubagentSteer({ name: r.name, message: params.message });
++            const admission = captureWorkerLaunch();
++            return handleSubagentSteer({ name: r.name, message: params.message }, undefined, () => { _signal?.throwIfAborted(); admission.assertCurrent(); });
+           }
+         }
+ 
+@@ -2142,6 +2241,11 @@
            return { content: [{ type: "text" as const, text: err }], details: { error: err } };
          }
  
@@ -291,7 +428,7 @@ index 7e20a0f..8052297 100644
          const resumedSessionId = entry.sessionId ?? getSessionId(sessionPath) ?? requestedName;
  
          // Record entry count before resuming so we can extract new messages.
-@@ -2153,7 +2216,8 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -2153,7 +2257,8 @@
          await new Promise<void>((resolve) => setTimeout(resolve, getShellReadyDelayMs()));
  
          // Build pi resume command
@@ -301,7 +438,7 @@ index 7e20a0f..8052297 100644
  
          // Load subagent-done extension so the agent can self-terminate if needed
          const subagentDonePath = join(SUBAGENTS_DIR, "subagent-done.ts");
-@@ -2166,6 +2230,10 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -2166,6 +2271,10 @@
  
          // Replay the model, identity, and default-deny tool/extension sandbox.
          applySandboxToParts(parts, loadout, { artifactDir, name });
@@ -312,7 +449,7 @@ index 7e20a0f..8052297 100644
  
          let resumeMsgFile: string | undefined;
          if (params.message) {
-@@ -2188,7 +2256,8 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -2188,7 +2297,8 @@
          // Build env prefix — replay the snapshot's config dir + spawn whitelist
          // so the resumed process resolves the same agents/extensions and keeps
          // the same nested-spawn restriction it originally ran with.
@@ -322,7 +459,7 @@ index 7e20a0f..8052297 100644
          const resumeAgentDir = loadout.agentDir ?? process.env.PI_CODING_AGENT_DIR ?? null;
          if (resumeAgentDir) {
            resumeEnvParts.push(`PI_CODING_AGENT_DIR=${shellEscape(resumeAgentDir)}`);
-@@ -2212,7 +2281,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -2212,7 +2322,7 @@
          // operate where they did before.
          const resumeCdPrefix = loadout.cwd ? `cd ${shellEscape(loadout.cwd)} && ` : "";
  
@@ -331,7 +468,7 @@ index 7e20a0f..8052297 100644
          const launchScriptFile = join(
            artifactDir,
            "subagent-scripts",
-@@ -2221,10 +2290,13 @@ export default function subagentsExtension(pi: ExtensionAPI) {
+@@ -2221,10 +2331,13 @@
              .replace(/[^a-z0-9\s-]/g, "")
              .replace(/\s+/g, "-")
              .replace(/-+/g, "-")
@@ -502,10 +639,9 @@ index ba37f06..368cbfb 100644
  
 diff --git a/pi-extension/subagents/t3-adapter.ts b/pi-extension/subagents/t3-adapter.ts
 new file mode 100644
-index 0000000..afb10d0
 --- /dev/null
 +++ b/pi-extension/subagents/t3-adapter.ts
-@@ -0,0 +1,756 @@
+@@ -0,0 +1,787 @@
 +import { createHash, randomUUID } from "node:crypto";
 +import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, realpathSync } from "node:fs";
 +import { homedir } from "node:os";
@@ -513,6 +649,7 @@ index 0000000..afb10d0
 +import { TeamStore, processIdentity } from "./team.ts";
 +import { Type } from "@sinclair/typebox";
 +import installSafeBash from "./tools/safe-bash.ts";
++import { countSessionEntryLines, getNewEntries } from "./session.ts";
 +import { arenaTask, arenaResultText, arenaOutcome } from "./team-arena.ts";
 +
 +const PREFIX = "mcp__t3-code__";
@@ -614,6 +751,23 @@ index 0000000..afb10d0
 +  const notifiedQuestions = new Set<string>();
 +  const tasks = new Map<string, any>();
 +  const pendingResumes = new Map<string, { key: string; promise: Promise<any> }>();
++  const scanInputReceipts = (ctx: any, state: any) => {
++    for (const task of tasks.values()) for (const [messageId, receipt] of task.inputReceipts ?? []) {
++      if (!receipt.sent || receipt.received) continue;
++      const member = state.members[memberKey(task)];
++      if (!member?.t3 || receipt.file !== member.t3.sessionFile || receipt.assignmentId !== JSON.stringify([member.id, member.incarnation, member.t3.taskId, member.t3.runId])) continue;
++      if (!ctx.sessionManager.getBranch().some((e: any) => e.type === "message" && e.message.toolName === "subagent_message" && e.message.details?.messageId === messageId)) continue;
++      let entries: any[];
++      try { entries = getNewEntries(receipt.file, receipt.line); } catch { continue; }
++      const found = entries.some(e => e.type === "custom" && e.customType === "subagent-message-received" && e.data?.messageId === messageId && e.data.assignmentId === receipt.assignmentId);
++      if (found) {
++        try { pi.sendMessage({ customType: "subagent-message-received", content: member.name + " received message " + messageId + ".", display: true, details: { messageId, assignmentId: receipt.assignmentId } }, { triggerTurn: true, deliverAs: "steer" }); }
++        catch (error) { console.error("Native input receipt notification failed; retaining it for the next scan.", error); continue; }
++        receipt.received = true;
++      }
++      receipt.line += entries.length;
++    }
++  };
 +  let arena: { controller: AbortController; taskId?: string; done?: Promise<void>; cancelling: boolean } | undefined;
 +  let lifetime = new AbortController();
 +  const base = join(homedir(), ".pi", "t3-teams");
@@ -784,6 +938,7 @@ index 0000000..afb10d0
 +      if (stopped || settled || !team.isAdmitted()) return;
 +      try {
 +        const state = store!.state(), memberId = binding ? memberKey(binding) : "root";
++        scanInputReceipts(ctx, state);
 +        for (const question of state.questions ?? []) {
 +          if (question.parent !== memberId && memberId !== "root") continue;
 +          if (notifiedQuestions.has(question.requestId)) continue;
@@ -1112,6 +1267,7 @@ index 0000000..afb10d0
 +        try { return await operation; } finally { if (pendingResumes.get(owned.childThreadId)?.promise === operation) pendingResumes.delete(owned.childThreadId); }
 +      }
 +      messageScopes.set(callId, { threadId: owned.childThreadId });
++      let pendingId: string | undefined, pendingReceipt: any;
 +      try {
 +        const question = (state.questions ?? []).find(q => q.from === memberKey(owned) && q.incarnation === state.members[memberKey(owned)]?.incarnation && q.taskId === owned.taskId && q.runId === owned.childRunId && (!args.requestId || q.requestId === args.requestId));
 +        if (args.requestId && !question) reject("requestId is not a current owned-assignment user question; permission requests and stale answers cannot be sent.");
@@ -1133,13 +1289,24 @@ index 0000000..afb10d0
 +          await nativeCall({ action: "respond", threadId: owned.childThreadId, requestId, answers: { [scope.questionId!]: args.message } });
 +          return { content: [{ type: "text", text: `Answered user question ${requestId} for ${state.members[memberKey(owned)].name}.` }], details: { requestId, childThreadId: owned.childThreadId, answered: true } };
 +        }
-+        const outcome = await ctx.executeTool(`${PREFIX}t3_thread_send`, { threadId: owned.childThreadId, message: args.message, mode: "steer", clientRequestId: randomUUID() }, { signal });
++        signal?.throwIfAborted(); assertReady();
++        const target = state.members[memberKey(owned)];
++        if (text(target.t3?.sessionFile) && target.t3.claimed) {
++          owned.inputReceipts ??= new Map();
++          do { pendingId = randomUUID().replaceAll("-", "").slice(0, 12); } while (owned.inputReceipts.has(pendingId));
++          pendingReceipt = { assignmentId: JSON.stringify([target.id, target.incarnation, target.t3.taskId, target.t3.runId]), file: target.t3.sessionFile, line: countSessionEntryLines(target.t3.sessionFile), sent: false, received: false };
++          owned.inputReceipts.set(pendingId, pendingReceipt);
++        }
++        const wire = pendingId ? "SUBAGENT_MESSAGE_V1:" + JSON.stringify({ messageId: pendingId, assignmentId: pendingReceipt.assignmentId, message: args.message }) : args.message;
++        const outcome = await ctx.executeTool(`${PREFIX}t3_thread_send`, { threadId: owned.childThreadId, message: wire, mode: "steer", clientRequestId: randomUUID() }, { signal });
 +        if (outcome.isError) reject(`native steering refused: ${nativeError(outcome)}`);
 +        const envelope = payload(outcome.result);
 +        const result = envelope?.content || envelope?.structuredContent ? payload(envelope) : envelope;
 +        if (result.threadId !== owned.childThreadId || result.runId !== owned.childRunId || result.delivery !== "steered") reject("native steering did not target the exact active bound run.");
-+        return { content: [{ type: "text", text: `Steered ${state.members[memberKey(owned)].name} without starting a new run.` }], details: { taskId: owned.taskId, childThreadId: owned.childThreadId, runId: owned.childRunId } };
-+      } finally { messageScopes.delete(callId); }
++        signal?.throwIfAborted(); assertReady();
++        if (pendingReceipt) pendingReceipt.sent = true;
++        return { content: [{ type: "text", text: pendingId ? `Sent message ${pendingId} to ${target.name}.` : `Sent message to ${target.name}.` }], details: { taskId: owned.taskId, childThreadId: owned.childThreadId, runId: owned.childRunId, messageId: pendingId } };
++      } finally { if (pendingId && !pendingReceipt?.sent) owned.inputReceipts.delete(pendingId); messageScopes.delete(callId); }
 +    },
 +    async arena(args: string, ctx: any) {
 +      assertReady();
@@ -1395,10 +1562,9 @@ index 0000000..5012017
 +}
 diff --git a/pi-extension/subagents/team-extension.ts b/pi-extension/subagents/team-extension.ts
 new file mode 100644
-index 0000000..4b85d01
 --- /dev/null
 +++ b/pi-extension/subagents/team-extension.ts
-@@ -0,0 +1,291 @@
+@@ -0,0 +1,308 @@
 +import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 +import { Type } from "@sinclair/typebox";
 +import { TeamStore, effective, peerContext, teamIdentity, processIdentity, type SendArgs, type TeamMessage } from "./team.ts";
@@ -1434,6 +1600,11 @@ index 0000000..4b85d01
 +  let store: TeamStore;
 +  let member = "root";
 +  let incarnation: string;
++  const inputAssignment = () => {
++    if (pi.getFlag("t3") !== true) return process.env.PI_SUBAGENT_ID;
++    const current = store?.state().members[member];
++    return current?.t3?.claimed && current.incarnation === incarnation ? JSON.stringify([member, incarnation, current.t3.taskId, current.t3.runId]) : undefined;
++  };
 +  let timer: ReturnType<typeof setInterval> | undefined;
 +  let stopped = false;
 +  let latest: ExtensionContext;
@@ -1586,6 +1757,7 @@ index 0000000..4b85d01
 +      incarnation = await store.register(existing ? { ...existing, live: true, deliverable: true, pid: process.pid, processIdentity: processIdentity(process.pid) } : { id: member, name: "orchestrator", parent: null, live: true, pid: process.pid, processIdentity: processIdentity(process.pid) }, existing?.incarnation);
 +    } catch (error) { stopped = true; ctx.shutdown(); throw error; }
 +    for (const entry of ctx.sessionManager.getEntries()) {
++      if (entry.type === "custom" && entry.customType === "subagent-message-received" && (entry.data as any).assignmentId === inputAssignment()) seen.add("input:" + (entry.data as any).messageId);
 +      if (entry.type === "custom" && entry.customType === "team-received") seen.add((entry.data as any).id);
 +      if (entry.type === "custom" && entry.customType === "team-consumed") for (const id of (entry.data as any).ids) { seen.add(id); consumed.add(id); }
 +      if (entry.type === "custom" && entry.customType === "team-peer-history") {
@@ -1613,7 +1785,18 @@ index 0000000..4b85d01
 +    identitySessionFile = ctx.sessionManager.getSessionFile();
 +  };
 +  pi.on("session_start", async (_event, ctx) => { if (pi.getFlag("t3") !== true) await start(ctx); });
-+  pi.on("input", () => { invalidateRetirement(); });
++  pi.on("input", (event, ctx) => {
++    invalidateRetirement();
++    if (!event.text.startsWith("SUBAGENT_MESSAGE_V1:")) return;
++    let envelope: any;
++    try { envelope = JSON.parse(event.text.slice("SUBAGENT_MESSAGE_V1:".length)); } catch { return; }
++    if (!/^[a-f0-9]{12}$/.test(envelope.messageId) || typeof envelope.message !== "string") return;
++    if (inputAssignment() && envelope.assignmentId === inputAssignment() && !stopped && admitted() && ctx.sessionManager.getSessionFile() === identitySessionFile && !seen.has("input:" + envelope.messageId)) {
++      pi.appendEntry("subagent-message-received", { messageId: envelope.messageId, assignmentId: envelope.assignmentId });
++      seen.add("input:" + envelope.messageId);
++    }
++    return { action: "transform", text: envelope.message, images: event.images };
++  });
 +  pi.on("before_agent_start", () => { invalidateRetirement(); sync(); });
 +  pi.on("agent_start", () => { invalidateRetirement(); });
 +  pi.on("agent_before_settle", async (event: any) => {

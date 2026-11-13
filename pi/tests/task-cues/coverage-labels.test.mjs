@@ -36,11 +36,11 @@ test('complete historical canonical pair is unknown coverage, not an unfinished-
     assert.equal(projection.lastResult, undefined, 'do not invent task-cue result observations');
     assert(projection.gaps.includes('top-level transcript observation coverage gap'));
     const cue = cueText(projection);
-    assert(cue.includes('Progress: no task-cue result observations recorded'));
-    assert(cue.includes('explicit unresolved observation identities=1'));
-    assert(cue.includes('Missing instrumentation does not mean work is unfinished.'));
-    assert(!cue.includes('Progress: none recorded'));
-    assert(!cue.includes('; unresolved='));
+    assert(cue.includes('Observed: no task-cue result observations recorded'));
+    assert(cue.includes('unmatched/ambiguous observation groups=0'));
+    assert(cue.includes('coverage gaps=top-level transcript observation coverage gap'));
+    assert(cue.includes('uninstrumented history is not recovered.'));
+    assert(!cue.includes('unresolved observation identities='));
   });
 });
 
@@ -49,8 +49,10 @@ test('call-only, repeated attempts and live-only evidence retain conservative fa
     const callOnly = project([call], canonical, 'old-session');
     assert.equal(callOnly.outcome, 'unknown');
     assert.equal(callOnly.unresolved, 1);
+    assert.equal(callOnly.unmatchedObservations, 0);
     const repeated = project([attempt('one'), attempt('two'), observedResult], canonical, 'old-session');
     assert.equal(repeated.unresolved, 1);
+    assert.equal(repeated.unmatchedObservations, 1);
     assert.equal(repeated.paired, 0);
     assert(repeated.gaps.includes('repeated operation identity'));
     const live = project([attempt('one'), observedResult], canonical, 'old-session');
@@ -60,6 +62,7 @@ test('call-only, repeated attempts and live-only evidence retain conservative fa
     assert(cueText(live).includes('reported success / live-only'));
     const interrupted = project([attempt('one')], canonical, 'old-session');
     assert.equal(interrupted.unresolved, 1);
-    assert(cueText(interrupted).includes('explicit unresolved observation identities=1'));
+    assert.equal(interrupted.unmatchedObservations, 1);
+    assert(cueText(interrupted).includes('unmatched/ambiguous observation groups=1'));
   });
 });

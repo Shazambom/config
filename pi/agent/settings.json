@@ -2,6 +2,8 @@
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-6-astra",
   "defaultThinkingLevel": "medium",
+  "defaultTools": ["bash", "codemode"],
+  "codemode": { "mode": "on" },
   "theme": "jetbrains-dark",
   "tuiMode": "fullscreen",
   "fullscreenCopyOnSelect": false,
@@ -11,14 +13,14 @@
   "enableSkillCommands": true,
   "skills": ["~/.claude/skills"],
   "prompts": [],
-  "extensions": ["./lifecycle/session-lifecycle.ts", "./task-cues/index.ts", "./wakeups/index.ts", "-builtin:mcp"],
+  "extensions": ["./lifecycle/session-lifecycle.ts", "./task-cues/index.ts", "./wakeups/index.ts", "+builtin:mcp"],
   "compaction": {
     "enabled": true,
     "reserveTokens": 128000,
     "keepRecentTokens": 40000
   },
   "observational-memory": {
-    "enabled": true,
+    "enabled": false,
     "compactAtContextTokens": 700000,
     "compactAtContextTokensByModel": {
       "openai-codex/gpt-6-astra": 350000
@@ -38,7 +40,6 @@
     { "source": "../upstream/pi-interactive-subagents", "skills": [], "prompts": [], "themes": [] },
     { "source": "../upstream/pi-observational-memory", "skills": [], "prompts": [], "themes": [] },
     "../node_modules/pi-diff-review",
-    { "source": "../overrides/quotas.ts", "skills": [], "prompts": [], "themes": [] },
-    { "source": "../overrides/grafana-mcp.ts", "skills": [], "prompts": [], "themes": [] }
+    { "source": "../overrides/quotas.ts", "skills": [], "prompts": [], "themes": [] }
   ]
 }

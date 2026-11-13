@@ -38,6 +38,7 @@ printf '%s\n' \
 [[ -L "$HOME/.claude/skills/grafana-logs" && ! -e "$test_dir/absent-skill" ]] || fail 'Existing skill symlink changed'
 cmp -s "$repo/claude/commands/debug.md" "$commands/debug.md" || fail 'Missing command not restored'
 cmp -s "$repo/pi/agent/extensions/claude-skills.ts" "$agent/extensions/claude-skills.ts" || fail 'Claude discovery extension not deployed'
+cmp -s "$repo/pi/agent/extensions/todo.ts" "$agent/extensions/todo.ts" || fail 'TODO extension not deployed'
 search_auth="$agent/extensions/web-search/auth.json"
 jq -e '.google_search_api_key == "fixture-key" and .google_cse_id == "fixture-id"' "$search_auth" >/dev/null || fail 'Search auth import failed'
 [[ ! -e "$HOME/zshrc-executed" ]] || fail 'Executed .zshrc'
@@ -68,8 +69,39 @@ jq -e --slurpfile source "$repo/pi/agent/settings.json" '
     select(test("^(git:|npm:|https?://|git@)"))];
   remote_sources == ($source[0] | remote_sources)
 ' "$agent/settings.json" >/dev/null || fail 'Remote package source changed during deployment'
-jq -e '.["observational-memory"].models | all(.[]; .provider == "openai-codex" and .id == "gpt-5.6-sol" and .thinking == "medium")' "$agent/settings.json" >/dev/null || fail 'Memory model drift'
-jq -e '.["observational-memory"].enabled == true' "$agent/settings.json" >/dev/null || fail 'Memory default disabled'
+# Managed behavior follows repository settings, including false/disabled values.
+# Paths are resolved during deployment; compare wrapper presence, not path spelling.
+assert_managed_settings() {
+  jq -e --slurpfile source "$1" '
+    def managed: {
+      memory: (.["observational-memory"] | {enabled, models}),
+      defaultTools, codemode,
+      nativeMcp: [.extensions[]? | select(test("^[+-]?builtin:mcp$"))],
+      grafanaWrapperCount: ([.packages[]? |
+        (if type == "string" then . else .source end) |
+        select(endswith("/grafana-mcp.ts"))] | length)
+    };
+    managed == ($source[0] | managed)
+  ' "$2" >/dev/null
+}
+assert_managed_settings "$repo/pi/agent/settings.json" "$agent/settings.json" || fail 'Managed OM/tools/codemode/native MCP settings differ from source'
+# Exercise both policy states without editing source or deployed real settings.
+for enabled in true false; do
+  jq --argjson enabled "$enabled" '
+    .["observational-memory"].enabled = $enabled |
+    .["observational-memory"].models |= with_entries(.value.id += "-fixture") |
+    .defaultTools = (if $enabled then ["bash"] else ["bash", "codemode"] end) |
+    .codemode.mode = (if $enabled then "off" else "on" end) |
+    .extensions = [if $enabled then "-builtin:mcp" else "+builtin:mcp" end] |
+    .packages = (if $enabled then [{source:"../overrides/grafana-mcp.ts"}] else [] end)
+  ' "$repo/pi/agent/settings.json" > "$test_dir/settings-source-fixture.json"
+  cp "$test_dir/settings-source-fixture.json" "$test_dir/settings-deployed-fixture.json"
+  assert_managed_settings "$test_dir/settings-source-fixture.json" "$test_dir/settings-deployed-fixture.json" || fail 'Source-based contract rejected matching policy state'
+  jq '.["observational-memory"].enabled |= not' "$test_dir/settings-deployed-fixture.json" > "$test_dir/settings-mismatch.json"
+  if assert_managed_settings "$test_dir/settings-source-fixture.json" "$test_dir/settings-mismatch.json"; then
+    fail 'Source-based contract accepted changed OM state'
+  fi
+done
 jq -e '.["observational-memory"].compactAtContextTokens == 700000 and
   .["observational-memory"].compactAtContextTokensByModel == {"openai-codex/gpt-6-astra": 350000} and
   .["observational-memory"].tailTokens == 40000 and

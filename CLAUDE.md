@@ -114,10 +114,13 @@ Feature index:
   settings preservation, refusal paths, and native server verification.
 - [Code review](docs/lessons/code-review.md): instruction-based architecture review,
   scoped exceptions, level coverage, and safe skill migrations.
+- [Pi optimization](docs/lessons/pi-optimization.md): task applicability, declaration/use evidence, package holds, bounded parallel batches, and tight-loop verification.
 - [Pi workflow resolution](docs/lessons/pi-workflow-resolution.md): slash lookup,
   manual-only skills, native expansion, and installed-runtime regression tests.
 - [Pi subagent completion](docs/lessons/pi-subagent-completion.md): durable shell
   receipts, terminal-marker loss, completion delivery, and pane cleanup.
+- [Pi steering receipts](docs/lessons/pi-steering-receipts.md): runtime-input meaning,
+  transcript reuse, notice-error isolation, short sockets and qualification limits.
 - [Pi subagent capacity](docs/lessons/pi-subagent-capacity.md): burst pane layout,
   structured refusal, native SDK errors, and active-CLI discovery.
 - [Pi subagent models](docs/lessons/pi-subagent-models.md): complete credential-backed
@@ -128,6 +131,8 @@ Feature index:
   version-gated native and bundle patches, and active-CLI regression checks.
 - [Pi task cues](docs/lessons/pi-task-cues.md): root-only advisory context, observed
   recovery, coverage labels, Unicode escaping and isolated runtime proof.
+- [Pi task tracking](docs/lessons/pi-task-tracking.md): TODO snapshot ownership,
+  whole-task guidance, automatic loading, resume and restricted-role limits.
 - [Pi wakeups](docs/lessons/pi-wakeups.md): timer/command runtime, calendar and
   process-cleanup limits, model qualification, failure controls, and deployment.
 - [Pi RPC readiness](docs/lessons/pi-rpc-readiness.md): request admission,
