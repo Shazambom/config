@@ -129,3 +129,11 @@ its scope-clarification update. This migration replaces only an exact known
 `SKILL.md`; customized entry points and symlinks are skipped, and existing
 reference files remain untouched. Run `bash claude/test-how-setup.sh` to verify
 fresh seeding and upgrade/preservation cases.
+
+## Headless hosts
+
+`claude/link.sh` symlinks every bundled skill and command into `~/.claude` instead
+of copying, so a `git pull` updates them in place. Use it on hosts that never edit
+skills locally (shazam, for T3 Code). It leaves real directories alone and removes
+links whose source was deleted upstream. shazam runs `git pull && claude/link.sh`
+nightly from its user crontab.
