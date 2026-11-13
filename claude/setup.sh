@@ -213,6 +213,25 @@ migrate_bundled_tdd() {
 }
 migrate_bundled_tdd
 
+# Refresh only the recognized complaint entry point; keep helper files intact.
+migrate_bundled_complaint_wishes() {
+  local target="$destination/skills/complaint" backup="$destination/complaint-skill-backup-wishes-v1" digest
+  [[ ! -L "$destination" && ! -L "$destination/skills" ]] || return 0
+  [[ -d "$target" && ! -L "$target" && -f "$target/SKILL.md" && ! -L "$target/SKILL.md" ]] || return 0
+  [[ -f "$source_root/skills/complaint/SKILL.md" ]] || return 0
+  [[ ! -e "$backup" && ! -L "$backup" ]] || return 0
+  if command -v shasum >/dev/null 2>&1; then digest="$(shasum -a 256 < "$target/SKILL.md")"
+  elif command -v sha256sum >/dev/null 2>&1; then digest="$(sha256sum < "$target/SKILL.md")"
+  else return 0; fi
+  [[ "${digest%% *}" == d298ee4431c99390363a71f0f292932dbe39c78055c4c6ce1870298b57df492e ]] || return 0
+  cmp -s "$target/SKILL.md" "$source_root/skills/complaint/SKILL.md" && return 0
+  mkdir -m 700 "$backup" || return 0
+  cp "$target/SKILL.md" "$backup/SKILL.md"
+  cp "$source_root/skills/complaint/SKILL.md" "$target/SKILL.md"
+  printf 'Backed up and updated complaint skill entry point: %s\n' "$backup/SKILL.md"
+}
+migrate_bundled_complaint_wishes
+
 # Update the recognized how entry point without replacing local reference files.
 migrate_bundled_how_scope() {
   local target="$destination/skills/how" backup="$destination/how-skill-backup-scope-v1" digest

@@ -1,6 +1,6 @@
 ---
 name: complaint
-description: Manually requested retrospective on Pi harness friction, bugs and missing features. Show a draft to the user, then save only the exact report they explicitly approve as legitimate and valid. Never collect or persist complaints automatically.
+description: Manually requested retrospective on how the Pi harness could better support the agent. Elicit session-grounded magic-wand wishes, friction and improvements, not only bugs. Show a draft, then save only the exact report explicitly approved as legitimate and valid. Never collect or persist complaints automatically.
 disable-model-invocation: true
 ---
 
@@ -11,35 +11,56 @@ to use this workflow. Discussing complaints, implementing these skills, a failed
 tool call, or ending a session is not an invocation or approval to save anything.
 Loading this file as a dependency of address-complaint does not start a report.
 
-## Ask the agents, then show a draft
+## Imagine a better harness, then show a draft
 
-Ask yourself about the actual current session:
+This is a harness-improvement retrospective, not just a bug report. Ask yourself
+about the actual current session:
 
-> What burned time and what are the missing features you want from the harness?
-> Are there bugs in the harness? What would have made your life easier if you had it?
+> If I could wave a magic wand, what would I wish the harness could give me?
+> What would make this work easier, clearer, faster, or more reliable?
+> What did I have to remember, reconstruct, coordinate, or work around myself?
+
+Start with the desired experience. A bug is not required: a useful capability,
+better access to existing information, or less manual coordination can be a
+legitimate wish even when everything worked as designed. Ground wishes in this
+session rather than inventing a generic feature wishlist.
 
 Answer the user directly. If relevant agents participated and their sessions are
 available, ask them the same questions using the host's messaging tools. Require
-chat-only replies, no file writes or code changes. Use their real responses; do not invent agreement,
-experiences or unavailable agents. Follow the host's asynchronous delivery rules.
-Do not start a fleet of new agents pretending to have experienced this session.
+chat-only replies, no file writes or code changes. Use their real responses; do
+not invent agreement, experiences or unavailable agents. Follow the host's
+asynchronous delivery rules. Do not start a fleet of new agents pretending to
+have experienced this session.
 
-Separate harness defects or missing capabilities from task complexity, external
-service failures and agent mistakes. Check whether the capability already exists,
-whether the loaded runtime is stale, or whether a documented command was missed.
-Suspicions may be reported as unverified; they are not established bugs.
+Keep the proposed improvement about the harness. Agent mistakes, task complexity,
+or external-tool failures can reveal useful harness support; ask what the harness
+could have provided to prevent, reduce, or recover from that friction. Do not stop
+at "not a harness defect," but do not relabel a third-party fix as a harness wish
+without identifying the harness capability or experience you want.
+
+Check whether the capability already exists, the loaded runtime is stale, or a
+documented command was missed. If it exists but was hard to find or use, describe
+that access or discoverability gap instead of claiming it is missing. Keep
+uncertainty explicit; an unproven benefit is a hypothesis, not an established bug.
 
 Show one concise draft report with a title, and numbered items if there are several:
-- **Friction:** what happened and what behavior was expected.
-- **Evidence:** the relevant tool/error, command, file or observed interaction.
-  Include a short reproduction if known. Do not invent timings or counts.
-- **Impact/workaround:** what burned time and what the agent did instead.
-- **Requested improvement:** the smallest change that would have helped, and why.
-- **Confidence:** observed, inferred or unverified; mention contrary evidence.
+- **Friction/opportunity:** what made the work harder, or what a better harness
+  experience would have made easier. No malfunction is necessary.
+- **Evidence:** the relevant interaction, repeated manual work, tool, command or
+  artifact from this session. Include a reproduction when reporting a bug, if
+  known. Do not invent timings or counts.
+- **Impact/workaround:** what attention or effort this consumed, and what the
+  agent did instead. A successful workaround does not invalidate the wish.
+- **Requested improvement:** the capability or experience you wish the harness
+  provided, and why it would help. Describe the outcome before prescribing an
+  implementation; do not constrain every wish to the smallest bug fix.
+- **Confidence:** distinguish observed friction from the hoped-for benefit;
+  mention existing capabilities, contrary evidence and unverified assumptions.
 
 Redact credentials, customer data and private transcript material before showing
-the draft. Do not dump whole transcripts into the report. If nothing legitimate
-was observed, say so; there is no quota and no reason to manufacture a complaint.
+the draft. Do not dump whole transcripts into the report. If no grounded, useful
+harness improvement comes to mind, say so; there is no quota. Do not dismiss the
+retrospective merely because no harness defect was found.
 
 ## Approval comes before any complaint file
 

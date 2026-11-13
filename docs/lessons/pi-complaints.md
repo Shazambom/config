@@ -50,3 +50,29 @@ Bash 3.2 and installed Pi 1.0.4 were exercised on macOS. Linux execution and
 concurrent hostile replacement of ancestor directories were not tested or claimed.
 Actual deployment must use init.sh; no real complaint should be filed merely to
 install or test these workflows.
+
+## Improvement wishes are not limited to defects
+
+A retrospective was treated as defect triage: collector problems were first
+misattributed to the harness, then the report was abandoned once no Pi-core bug
+was established. The user's intent was broader: what could the harness give the
+agent that would make this work easier, even when it behaves as designed?
+
+The complaint skill leads with that magic-wand question. Wishes need session
+grounding and an identified harness capability or experience, not a reproduced
+bug. Agent mistakes and external failures can motivate harness support without
+being blamed on the harness. If a capability already exists, distinguish access
+or discoverability friction from absence. Keep observed costs separate from
+hypothesized benefits; a successful workaround does not invalidate a wish.
+
+The explicit-invocation and approval/save sections stay unchanged. A request to
+edit or test this skill does not authorize a complaint record. The exact-known
+entry-point migration preserves helpers and custom entry points, with a private
+backup. `claude/test-complaint-setup.sh` checks that migration and byte-identical
+approval rules; `claude/test-complaint-skills.sh` checks runtime delivery and
+manual-only discovery. Neither alone proves that a model will follow the intent.
+
+Three read-only model plan checks accepted a grounded non-bug wish, separated
+external outage recovery support from provider repair, and refused to treat a
+skill-edit request as a retrospective or save authorization. These finite plans
+support the wording change, not universal compliance or live end-to-end behavior.

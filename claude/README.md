@@ -60,10 +60,11 @@ extra files, symlinks, and commands.
   lessons from tracing a real run. Invoke with `/skill:artifact`.
 
 - Repository-authored: `complaint` and `address-complaint`, manual-only harness
-  feedback workflows. `/skill:complaint` shows a draft in chat and saves the exact
-  report only after explicit human approval. `/skill:address-complaint` selects
-  the newest approved report automatically and investigates it in the verified
-  Pi source checkout, not the complaint's origin project.
+  improvement workflows. `/skill:complaint` asks what the agent wishes the harness
+  could provide, grounded in the session; a bug is not required. It shows a draft
+  in chat and saves only after explicit human approval. `/skill:address-complaint`
+  selects the newest approved report and investigates it in the verified Pi source
+  checkout, not the complaint's origin project.
 
 - Repository-authored: `pi-optimize`, a manual-only scientific optimization
   campaign. Invoke `/skill:pi-optimize <max-trials>` with a positive integer.
