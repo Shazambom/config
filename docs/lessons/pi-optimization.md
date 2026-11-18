@@ -32,6 +32,27 @@ Root accepted parallel permission without preparing a second resource-compatible
 
 An explicit human request to apply already-qualified saved configuration authorizes the requested deployment, not another benchmark/design round. Reuse frozen artifacts, change only authorized repository settings via existing init, verify deployed values against source, and delegate bookkeeping. `pi/test-setup.sh` previously hardcoded OM enabled and an obsolete model; it now compares source/deployed OM enablement/models, default tools, codemode, native MCP selection and wrapper presence, with isolated matching/mismatching policy fixtures. Source remains authoritative across either enabled state. This is configuration deployment proof, not runtime capability or performance proof.
 
+## Audit saved usage before tuning
+
+Two regressions multiplied root-session cost about twentyfold per call and were
+visible only in saved session usage, not in any benchmark. An ephemeral context
+message broke provider cache continuation ([task cues](pi-task-cues.md)). Disabling
+observational memory removed the only Astra compaction threshold, so fallback
+compaction moved to the context window minus `compaction.reserveTokens`, well past
+the 272,000-token point where Codex doubles Astra's fresh and cached rates.
+Earlier reasoning that the cue's overhead was minimal measured its size, not its
+effect on caching.
+
+After changing extensions, compaction, memory or model windows, read per-call
+`usage` from recent root session files: cache-read share by day, context size per
+call, and `tokensBefore` on compaction entries. Compare against the days before
+the change. A setting that owns a threshold can be the only thing holding it;
+check what takes over when it is disabled. The Astra window in `pi/agent/models.json`
+now sets the fallback start point, and `pi/test-setup.sh` checks that it stays below
+the double-rate tier. Cost figures in session files are API-price estimates, not
+subscription billing. The expected recovery to earlier per-call cost is an estimate
+until a long root session is measured after deployment.
+
 ## Verification and limits
 
 Make preflight assertions control the command's exit status. A compound Docker

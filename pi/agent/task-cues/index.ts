@@ -9,6 +9,7 @@ export default function taskCues(pi: ExtensionAPI) {
   let expected: Receipt | undefined;
   let sessionId: string | undefined;
   let stopped = false;
+  let cuedUnmatched = 0;
   const recordingGaps = new Set<string>();
 
   function canonical(file: string) {
@@ -37,7 +38,7 @@ export default function taskCues(pi: ExtensionAPI) {
     } catch { return; }
   }
 
-  pi.on('session_start', () => { expected = undefined; sessionId = undefined; stopped = false; recordingGaps.clear(); });
+  pi.on('session_start', () => { expected = undefined; sessionId = undefined; stopped = false; cuedUnmatched = 0; recordingGaps.clear(); });
   pi.on('session_shutdown', () => { stopped = true; });
 
   function observe(event: any, ctx: any) {
@@ -67,8 +68,15 @@ export default function taskCues(pi: ExtensionAPI) {
       const branch = ctx.sessionManager.getBranch();
       const saved = canonicalEntries(owner.sessionFile, sessionId);
       const facts = project(branch, saved, sessionId, recordingGaps);
+      // The cue is ephemeral, so a request carrying it is never a prefix of the next one and the
+      // provider re-reads the whole context. Cue once per new unmatched operation, never routinely.
+      if (facts.unmatchedObservations <= cuedUnmatched) {
+        cuedUnmatched = facts.unmatchedObservations;
+        return { messages: event.messages };
+      }
       const content = cueText(facts);
       if (Array.from(content).length > 1200 || !admitted(ctx)) return { messages: event.messages };
+      cuedUnmatched = facts.unmatchedObservations;
       // Never filter or mutate originals, even an identically named foreign custom message.
       return { messages: [...event.messages, { role: 'custom' as const, customType: 'task-cue', content, display: false, timestamp: Date.now() }] };
     } catch { return { messages: event.messages }; }

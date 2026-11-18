@@ -4,10 +4,39 @@ The compact cue is published through the repository-owned setup path. Setup does
 not restart active sessions: a loaded extension keeps its existing function until
 an explicit reload or a fresh process.
 
+## An always-on cue defeats prompt caching
+
+The cue was appended to every root request. Session logs showed long root sessions
+at 95–99% cache reads on every busy day before the cue shipped and 1–4% afterwards.
+Requests following a recorded tool call missed the cache 69% of the time. The Codex
+provider (`getCachedWebSocketInputDelta` in pi-ai's `openai-codex-responses.js`)
+sends only new input when a request exactly extends the previous request plus its
+response, and otherwise re-sends everything. An ephemeral trailing message is in
+request N and absent from request N+1, so the extension check always fails. The
+cause rests on that source reading plus before/after and within-session log
+comparisons, not on a controlled paid run.
+
+Replaying `project` over 14 saved root sessions found every one of 6,570 recorded
+operations paired, and no request was ever sent while an operation lacked a result.
+The routine cue repeated the transcript's last tool result and a standing coverage
+label. The handler now cues only when `unmatchedObservations` rises above the count
+last cued, and resets that count on `session_start`, so an interrupted operation is
+announced once, and again after a restart. Accepted tradeoff: the cue is not
+repeated on later requests, and a branch change that swaps one unmatched operation
+for another at the same count is not announced.
+
+Before adding anything to the `context` event, check that consecutive provider
+requests still extend each other. `runtime.mjs` asserts this in its non-recovery
+modes; in `recovery` it asserts one cue after resume and none on the next request.
+`recovery-drop` is the forwarding-drop control and must fail at the cue assertion.
+The identity modes (`child`, `unknown`, `stale`, `multiple`) no longer distinguish
+suppression at runtime because no cue is due there; `observations.test.mjs` proves
+suppression against a pending unmatched operation with a positive control.
+
 ## Preserve input, do not infer authority
 
-The context handler appends one ephemeral advisory message to a new array. It
-never filters original messages, including an existing `task-cue` custom message.
+When a cue is due, the context handler appends one ephemeral advisory message to a
+new array. It never filters original messages, including an existing `task-cue` custom message.
 A user-role message does not establish a new goal. Root guidance uses ordinary
 conversation notes and labels agent interpretation separately from agreement.
 
@@ -70,7 +99,9 @@ the cue's character bound. Regression: `pi/tests/task-cues/bidi.test.mjs`.
 `pi/tests/task-cues/runtime.mjs` runs the actual selected bundle with private
 synthetic settings/auth and a loopback scripted provider. Its first RED failed
 at the missing provider cue after the original write and tool pair succeeded.
-The forwarding-drop control fails that same assertion. The recovery case kills
+That routine cue was later retired (see above), and the runtime test's cue wording
+had gone stale after the compact rewording, so it failed before the change for an
+unrelated reason. Rerun the runtime modes whenever cue text changes. The recovery case kills
 only its own CLI after an effect barrier, resumes with a new task, checks the
 provider input and inspects the counter to rule out duplicated effects. An
 unrelated owned sentinel must survive the interrupt and is cleaned up separately.

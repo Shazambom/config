@@ -52,16 +52,40 @@ function fixture(){
  install(pi);handlers.session_start();
  return {handlers,ctx,entries,file,close:()=>rmSync(dir,{recursive:true,force:true}),setIdentity:x=>identity=x,setOwner:x=>owner=x,setRepeat:()=>repeat=true,setFail:()=>fail=true};
 }
+const start=(f,id)=>f.handlers.tool_execution_start({type:'tool_execution_start',toolCallId:id,toolName:'bash',args:{}},f.ctx);
+const finish=(f,id)=>f.handlers.tool_execution_end({type:'tool_execution_end',toolCallId:id,toolName:'bash',isError:false},f.ctx);
 test('preserve every original object/order; no root inference; pin generation; context failure passes through',()=>{
  const f=fixture();try{
  const messages=[{role:'user',content:[{type:'image',data:'original'}]},{role:'custom',customType:'task-cue',content:'foreign original'},{role:'toolResult',toolCallId:'x'}];
  const run=()=>f.handlers.context({messages},f.ctx);
+ const pending=id=>f.entries.push({type:'custom',customType:observationType,id:'p'+id,data:{session_id:'s',tool_call_id:id,parent_tool_call_id:null,phase:'attempted',tool_name:'bash',attempted_target:null,reported_error:null}});
+ start(f,'c1');
  const output=run().messages;assert.equal(output.length,4);messages.forEach((m,i)=>assert.equal(output[i],m));assert.equal(messages.length,3);
- f.setOwner({managed:true,status:'owned',sessionFile:f.file,generation:'changed'});assert.equal(run().messages,messages);
+ // A new unmatched operation is pending in every case below, so an unchanged array proves suppression.
+ pending('c2');f.setOwner({managed:true,status:'owned',sessionFile:f.file,generation:'changed'});assert.equal(run().messages,messages);
  f.handlers.session_start();f.setIdentity({status:'child',sessionFile:f.file});assert.equal(run().messages,messages);
  f.setIdentity({status:'unknown'});assert.equal(run().messages,messages);
  f.setIdentity({status:'root',sessionFile:f.file+'.stale'});assert.equal(run().messages,messages);
- f.setIdentity({status:'root',sessionFile:f.file});f.setRepeat();assert.equal(run().messages,messages);
+ f.setIdentity({status:'root',sessionFile:f.file});assert.equal(run().messages.length,4,'suppressed cue stayed due');
+ pending('c3');f.setRepeat();assert.equal(run().messages,messages);
+ }finally{f.close();}
+});
+test('no cue while every recorded operation has its result, so requests keep extending',()=>{
+ const f=fixture();try{
+ const messages=[{role:'user',content:'task'}];
+ assert.equal(f.handlers.context({messages},f.ctx).messages,messages);
+ start(f,'c1');finish(f,'c1');
+ assert.equal(f.handlers.context({messages},f.ctx).messages,messages);
+ }finally{f.close();}
+});
+test('cue once per new unmatched operation, and again after a session restart',()=>{
+ const f=fixture();try{
+ const messages=[{role:'user',content:'task'}];
+ const cue=()=>{const output=f.handlers.context({messages},f.ctx).messages;return output===messages?null:output.at(-1).content;};
+ start(f,'c1');assert(cue().includes('unmatched/ambiguous observation groups=1'));assert.equal(cue(),null);
+ start(f,'c2');finish(f,'c2');assert.equal(cue(),null,'a completed call does not repeat the cue');
+ start(f,'c3');assert(cue().includes('unmatched/ambiguous observation groups=2'));assert.equal(cue(),null);
+ f.handlers.session_start();assert(cue().includes('unmatched/ambiguous observation groups=2'));assert.equal(cue(),null);
  }finally{f.close();}
 });
 test('append error ghosts stay unknown; forbidden arguments never recorded; branch failure unchanged',()=>{

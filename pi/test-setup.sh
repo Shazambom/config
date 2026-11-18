@@ -134,9 +134,12 @@ jq -e '.vars.editor == "#2B2B2B" and .vars.text == "#A9B7C6" and
   .vars.orange == "#CC7832" and .vars.green == "#6A8759" and
   .colors.syntaxFunction == "#FFC66D" and .colors.syntaxNumber == "#6897BB"' \
   "$agent/themes/vim-darcula.json" >/dev/null || fail 'Vim palette drift'
-jq -e '.providers["openai-codex"].modelOverrides["gpt-6-astra"].contextWindow == 872000 and
-  .providers.anthropic.modelOverrides["claude-fable-5"].contextWindow == 1000000 and
+jq -e '.providers.anthropic.modelOverrides["claude-fable-5"].contextWindow == 1000000 and
   .providers.anthropic.modelOverrides["claude-fable-5-1"].contextWindow == 1000000' "$agent/models.json" >/dev/null || fail 'Long-context model drift'
+# Codex bills Astra at double rate from 272,000 context tokens, so native compaction must start below that.
+jq -e -n --slurpfile models "$agent/models.json" --slurpfile settings "$agent/settings.json" \
+  '($models[0].providers["openai-codex"].modelOverrides["gpt-6-astra"].contextWindow - $settings[0].compaction.reserveTokens) as $start |
+  $settings[0].compaction.enabled and $start > $settings[0].compaction.keepRecentTokens and $start < 272000' >/dev/null || fail 'Astra compaction starts in the double-rate tier'
 PI_CODING_AGENT_DIR="$agent" node "$repo/pi/tests/memory-threshold-fixture.mjs"
 cp "$agent/settings.json" "$test_dir/settings.expected"
 

@@ -855,8 +855,12 @@ the normal Pi credentials and consume model quota when enabled.
 
 Long-context defaults deploy through `init.sh --pi`:
 
-- `pi/agent/models.json` overrides Codex `gpt-6-astra` to 872,000 tokens and
-  direct Anthropic `claude-fable-5` / `claude-fable-5-1` to 1,000,000 tokens.
+- `pi/agent/models.json` sets the context window Pi assumes for Codex `gpt-6-astra`
+  and direct Anthropic `claude-fable-5` / `claude-fable-5-1`. Pi starts fallback
+  compaction at that window minus `compaction.reserveTokens`. The Astra window is
+  deliberately below the model's real limit: Codex doubles Astra's per-token rate,
+  cached tokens included, from 272,000 context tokens, so compaction must start
+  below that. `pi/test-setup.sh` checks the resulting start point, not the value.
   Unknown model IDs are ignored; other providers are unchanged. This file is
   repository-owned, so edit it here rather than the deployed copy.
 - OM compacts Codex Astra at 350,000 tokens. Other models, including Fable, retain

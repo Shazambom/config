@@ -15,7 +15,7 @@ const session=join(evidence,'session.jsonl'), events=join(evidence,'events.jsonl
 const text=m=>typeof m.content==='string'?m.content:(m.content??[]).filter(p=>p.type==='text').map(p=>p.text).join('\n');
 let number=0;
 const requests=[];
-const recovery=mode==='recovery';
+const recovery=mode.startsWith('recovery');
 const server=createServer(async(req,res)=>{
  let raw='';for await(const part of req)raw+=part;
  const body=JSON.parse(raw);requests.push(body);appendFileSync(events,JSON.stringify({type:'provider',number:++number,body})+'\n');
@@ -40,7 +40,7 @@ export default function(pi){
  pi.events.on('session-lifecycle:admission',({respond})=>respond({managed:true,status:'owned',sessionFile:file,generation:'private-component-owner'}));
  install(pi);
  ${recovery?`pi.registerTool({name:'held_effect',label:'held_effect',description:'Private owned barrier',executionMode:'sequential',parameters:{type:'object',properties:{}},async execute(id,args,signal,onUpdate){appendFileSync('counter.txt','1\\n');onUpdate({content:[{type:'text',text:'OWNED_EFFECT_BARRIER'}],details:{}});await new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(Error('stopped')),{once:true}));return {content:[],details:{}};}});`:''}
- ${mode==='drop'?"pi.on('context',(event)=>({messages:event.messages.filter(m=>m.customType!=='task-cue')}));":''}
+ ${mode==='recovery-drop'?"pi.on('context',(event)=>({messages:event.messages.filter(m=>m.customType!=='task-cue')}));":''}
  pi.on('context',(event)=>appendFileSync(${JSON.stringify(events)},JSON.stringify({type:'context',messages:event.messages})+'\\n'));
 }`);
 const launch=()=>spawn(process.execPath,[cli,'--mode','rpc','--no-extensions','--no-skills','--no-prompt-templates','--no-context-files','--no-mcp','--tools',recovery?'write,held_effect':'write','-e',fixture,'--session',session],{cwd:join(evidence,'cwd'),env:{PATH:process.env.PATH,HOME:join(evidence,'home'),PI_CODING_AGENT_DIR:join(evidence,'agent'),TMPDIR:evidence,LANG:'en_US.UTF-8'},stdio:['pipe','pipe','pipe']});
@@ -63,14 +63,14 @@ try{
   const saved=readFileSync(session,'utf8').trim().split('\n').map(JSON.parse);
   assert(saved.some(e=>e.type==='custom'&&e.data?.tool_call_id==='held-two'&&e.data.phase==='attempted'));
   assert(!saved.some(e=>e.type==='custom'&&e.data?.tool_call_id==='held-two'&&e.data.phase==='reported-result'));
-  child=launch();await drive('NEW_TASK_INVESTIGATE_DO_NOT_REPLAY');
+  child=launch();await drive('NEW_TASK_INVESTIGATE_DO_NOT_REPLAY');await drive('FOLLOW_UP_AFTER_CUE');
  }
 }finally{
  if(child.exitCode===null&&child.signalCode===null){const exited=once(child,'exit');child.stdin.end();const timer=setTimeout(()=>child.kill('SIGTERM'),2000);await exited;clearTimeout(timer);}
  if(sentinel){process.kill(sentinel.pid,0);const exited=once(sentinel,'exit');sentinel.kill('SIGTERM');await exited;}
  server.closeAllConnections();await new Promise(r=>server.close(r));
 }
-assert.equal(requests.length,2,'no additional model requests');
+assert.equal(requests.length,recovery?3:2,'no additional model requests');
 assert.equal(readFileSync(join(evidence,'cwd/artifact.txt'),'utf8'),'EXACT_ARTIFACT','fresh artifact inspection');
 const second=requests[1];
 assert(second.messages.some(m=>m.role==='user'&&text(m).includes('ORIGINAL_TASK_UNCHANGED')),'original task retained');
@@ -80,14 +80,19 @@ if(recovery){
  assert.equal(readFileSync(join(evidence,'cwd/counter.txt'),'utf8'),'1\n','effect not replayed');
  assert(second.messages.some(m=>m.role==='user'&&text(m).includes('NEW_TASK_INVESTIGATE_DO_NOT_REPLAY')),'new resume task delivered');
 }
-const cues=second.messages.filter(m=>m.role==='user'&&text(m).includes('Advisory only;'));
-if(['child','unknown','stale','multiple'].includes(mode))assert.equal(cues.length,0,'nonroot/uncertain identity suppresses only cue');
-else{
+const cueIn=request=>request.messages.filter(m=>m.role==='user'&&text(m).includes('Advisory only'));
+const cues=cueIn(second);
+if(!recovery){
+ // Identity modes share this path; observations.test.mjs proves their suppression against a due cue.
+ assert.equal(cues.length,0,'no cue while every recorded operation has its result');
+ assert.deepEqual(second.messages.slice(0,requests[0].messages.length),requests[0].messages,'each request extends the previous one');
+}else{
  assert.equal(cues.length,1,'root advisory reaches actual provider');
  assert(text(cues[0]).includes('reported success'),'actual result fact reaches provider');
- if(recovery){assert(text(cues[0]).includes('unknown'));assert(text(cues[0]).includes('explicit unresolved observation identities=1'));}
+ assert(text(cues[0]).includes('unknown'));assert(text(cues[0]).includes('unmatched/ambiguous observation groups=1'));
  assert(text(cues[0]).includes('saved'),'canonical saved provenance reaches provider');
  assert(Array.from(text(cues[0])).length<=1200,'bounded cue');
+ assert.equal(cueIn(requests[2]).length,0,'cue is not repeated for the same unmatched operation');
 }
 writeFileSync(join(evidence,'receipt.json'),JSON.stringify({cli,version:execFileSync(process.execPath,[cli,'--version'],{encoding:'utf8'}).trim(),mode,requests:number,identity:'stub-only component proof',passed:true},null,2));
 console.log(mode+': PASS (stub identity only)');
