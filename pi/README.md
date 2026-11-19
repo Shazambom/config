@@ -1058,6 +1058,9 @@ setup does not copy snippets from downloaded upstream sources. The six original
 snippets were imported from the pinned pi-config package alongside our KISS snippet.
 Edit or add snippets in that directory and rerun `./init.sh --pi`. Do not edit
 the deployed copies. The extension code itself still comes from pinned upstream.
+Setup deploys that code as a copy, not a symlink: Pi imports an extension from its
+real path and the extension reads the `snippets/` directory beside it, so a symlink
+would show only upstream's snippets.
 
 ### Web fetch and search
 

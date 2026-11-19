@@ -140,11 +140,17 @@ config_ref="$(jq -r '.[] | select(.name == "pi-config") | .ref' "$repo/pi/upstre
 mkdir -p "$agent/extensions"
 for extension in browser prompt-snippets web-fetch web-search; do
   target="$agent/extensions/$extension"
-  if [[ -L "$target" || ( -e "$target/index.ts" && ! -L "$target/index.ts" ) || ( -e "$target/node_modules" && ! -L "$target/node_modules" ) ]]; then
+  # Pi imports an extension from its real path, and prompt-snippets reads the snippets directory
+  # beside that path. Its entry is therefore a copy; a symlink would load only upstream's snippets.
+  if [[ -L "$target" || ( $extension != prompt-snippets && -e "$target/index.ts" && ! -L "$target/index.ts" ) || ( -e "$target/node_modules" && ! -L "$target/node_modules" ) ]]; then
     printf 'Cannot deploy %s: unmanaged extension. Move it aside and rerun setup.\n' "$target" >&2
     exit 1
   fi
-  ln -s "$repo/pi/upstream/pi-config-$config_ref/extensions/$extension/index.ts" "$stage/$extension"
+  if [[ $extension == prompt-snippets ]]; then
+    cp "$repo/pi/upstream/pi-config-$config_ref/extensions/$extension/index.ts" "$stage/$extension"
+  else
+    ln -s "$repo/pi/upstream/pi-config-$config_ref/extensions/$extension/index.ts" "$stage/$extension"
+  fi
 done
 for extension in browser prompt-snippets web-fetch web-search; do
   mkdir -p "$agent/extensions/$extension"

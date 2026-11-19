@@ -1,11 +1,13 @@
-// Exercise the actual deployed symlink target and picker, not a copied implementation.
+// Exercise the actual deployed extension and picker, not a copied implementation.
 import assert from 'node:assert/strict';
-import { lstatSync, readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { createJiti } from '../../node_modules/jiti/lib/jiti.mjs';
 const agent = join(process.env.CONFIG_PI_HOME, 'agent');
-const target = join(agent, 'extensions/prompt-snippets/index.ts');
-assert(lstatSync(target).isSymbolicLink(), 'setup must deploy the real extension symlink');
+// Pi resolves an extension to its real path before importing it, and the extension reads the
+// snippets directory beside that path. Load it the same way, or a symlinked deployment passes
+// here while Pi shows only the upstream snippets.
+const target = realpathSync(join(agent, 'extensions/prompt-snippets/index.ts'));
 const expected = new Map([
   ['scope-creep', "Stay within the intended scope of the feature. Do not deviate or add features beyond its original intent. Focus on delivering the MVP, and expand scope only at the user's discretion. Follow TDD without using it as a reason to expand scope."],
   ['research-escape-hatch', "Use online research as an escape hatch when you've spent too long making little progress or tried many approaches without success. Search from several angles and levels of abstraction: the exact symptom, the underlying mechanism, and the broader problem. Look for existing solutions and other people's reasoning. Treat results as references and suggested paths, not authority. Verify promising ideas against the actual system and requirements; don't let them cloud your judgment, change the end goal, or expand scope. Never put secrets, private code, or internal data into searches."],
