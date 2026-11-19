@@ -53,6 +53,24 @@ the double-rate tier. Cost figures in session files are API-price estimates, not
 subscription billing. The expected recovery to earlier per-call cost is an estimate
 until a long root session is measured after deployment.
 
+## Self-chosen command timeouts cost long builds
+
+On two long build tasks the solver set a 200-second timeout on an install or build
+step with nothing in the instructions suggesting that value. The step was killed
+and run again, costing about 200 seconds each time. Earlier advice to "choose a
+timeout that allows the build to finish" had left the model choosing 120 seconds.
+A firm rule in `pi/agent/AGENTS.md` (never set a timeout on build, install or
+test-suite commands; log their output; timeouts only for quick inspections) was
+followed exactly in both trials: no step killed, 694s to 529s on one task and
+1,301s to 1,200s on the other, official grade unchanged. Accepted tradeoff: a
+command that truly hangs runs until the surrounding limit. Evidence is one pair
+per task, and the second ran beside image builds.
+
+When a run is slower than a reference at similar call counts, list each command's
+duration, timeout and error flag before looking at prompts or tools. Separate
+startup from working time as well: the launcher's setup took about 19 seconds in
+emulated benchmark containers and 1.4 seconds on the host.
+
 ## Verification and limits
 
 Make preflight assertions control the command's exit status. A compound Docker

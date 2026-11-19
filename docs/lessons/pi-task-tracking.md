@@ -50,3 +50,28 @@ Policy promotion should match the tested bytes and deploy through existing init.
 
 Upstream source: `earendil-works/pi`, `examples/extensions/todo.ts` as distributed
 in Pi 1.0.4. MIT attribution is retained in `todo.LICENSE` beside the extension.
+
+## Batching the tool did not reduce tracking calls
+
+Across nine benchmark runs on the current profile, `todo` calls were exactly two
+per item (one `add`, one `toggle`) with one to three items, and tracking-only
+responses were 30–50% of model calls on short tasks. Two attempts to cut that
+failed. An instruction to send tracking calls in the same response as the next
+work call was delivered and ignored; in about 4,900 tool-using responses in saved
+sessions, `todo` and `task_checkpoint` never shared a response with another call.
+A test-first variant of the extension accepting several texts per `add` and
+several ids per `toggle` did collapse list creation into one call, but the model
+ticked items off one at a time as each milestone completed and created three
+items where baselines usually created two. Calls, tokens and time did not fall
+on either task (14 against 10 calls; 12 against 12). The variant was reverted.
+
+The estimate that preceded the build was wrong: it assumed ticks would come
+together at the end, from one run where they did. Before building a tracking
+optimization, tabulate adds, toggles and their positions across every available
+run and compute the saving from that pattern. A one-call saving cannot be shown
+by single runs when the same task varies by several calls between runs.
+
+Do not retry tool batching or ride-along wording without a new mechanism. The
+remaining lever is how much tracking the guidance asks for, which trades
+short-task overhead against tracking on long work and is the user's choice.
+Evidence is in the private campaign ledger; neither trial changed production.
