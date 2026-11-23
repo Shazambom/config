@@ -17,6 +17,7 @@ Check these traps before starting (updated from `references/lessons.md`):
 - **Verify current platform and API limits.** Check live constraints (rate limits, search-bar character caps, available fields) before proposing fixes that the platform cannot support.
 - **Never edit product code before user sign-off.** Stop at Phase 4 until the user approves the direction, unless the user explicitly skipped sign-off.
 - **Check repo styleguide and token-linter contracts before planning.** Read design-system rules (control option caps, protected tokens, contrast rules) and make screenshot scripts fail hard on console errors or empty renders.
+- **Eliminate unnecessary steps and default to the logged-in user.** Flag redundant "Load" gates, extra setup clicks, or selectors for non-default targets (such as another user's data); views should load the user's own cached data immediately, with rare overrides tucked out of the primary flow.
 
 ## Arguments
 

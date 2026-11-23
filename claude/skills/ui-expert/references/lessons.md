@@ -2,6 +2,7 @@
 
 Condensed and general, newest first. Added during the Phase 8 post-run audit whenever a run surfaces a reusable rule, rubric gap, or failure mode.
 
+- **2026-11-22: Cut unnecessary steps and default strictly to the logged-in user.** Opening a tab or view should load the user's own data immediately (backed by caching) instead of gating behind a manual "Load" button or target selector. Lean toward removing steps whenever nothing important is lost, and tuck rare non-default overrides (such as inspecting another user's data) out of the primary flow.
 - **2026-11-22: Fail capture scripts on console errors or empty renders.** Make screenshot scripts exit non-zero on page errors, console errors, or missing target DOM instead of saving blank PNGs, and visually inspect every captured state across dark and light themes after implementation.
 - **2026-11-22: Check repo styleguide and token-linter contracts before writing CSS.** Read design-system rules (control option caps, protected tokens, shared contrast rule tables) before planning theme or layout overrides so fixes do not violate style invariants.
 - **2026-11-22: Verify client search-syntax quoting against existing repo utilities.** When building copy-to-clipboard filter or regex helpers, confirm how the target client tokenizes whitespace and punctuation against existing repo helpers and tests before shipping.
