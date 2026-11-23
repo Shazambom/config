@@ -16,6 +16,7 @@ Check these traps before starting (updated from `references/lessons.md`):
 - **Keep auditor and verifiers isolated.** A verifier must never reuse the auditor's session or see peer verdicts; same-context self-review does not satisfy independent verification.
 - **Verify current platform and API limits.** Check live constraints (rate limits, search-bar character caps, available fields) before proposing fixes that the platform cannot support.
 - **Never edit product code before user sign-off.** Stop at Phase 4 until the user approves the direction, unless the user explicitly skipped sign-off.
+- **Check repo styleguide and token-linter contracts before planning.** Read design-system rules (control option caps, protected tokens, contrast rules) and make screenshot scripts fail hard on console errors or empty renders.
 
 ## Arguments
 

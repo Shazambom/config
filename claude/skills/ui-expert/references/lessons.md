@@ -2,6 +2,9 @@
 
 Condensed and general, newest first. Added during the Phase 8 post-run audit whenever a run surfaces a reusable rule, rubric gap, or failure mode.
 
+- **2026-11-22: Fail capture scripts on console errors or empty renders.** Make screenshot scripts exit non-zero on page errors, console errors, or missing target DOM instead of saving blank PNGs, and visually inspect every captured state across dark and light themes after implementation.
+- **2026-11-22: Check repo styleguide and token-linter contracts before writing CSS.** Read design-system rules (control option caps, protected tokens, shared contrast rule tables) before planning theme or layout overrides so fixes do not violate style invariants.
+- **2026-11-22: Verify client search-syntax quoting against existing repo utilities.** When building copy-to-clipboard filter or regex helpers, confirm how the target client tokenizes whitespace and punctuation against existing repo helpers and tests before shipping.
 - **2026-11-22: Keep the auditor blind to source code during Phase 2.** Reading domain formulas or component variable names first hides jargon collisions (such as "Bleed" colliding with a game combat ailment). Always feed the blank-slate auditor screenshots and domain user context only, then let independent verifiers inspect code in Phase 3.
 - **2026-11-22: Audit both dark and light themes every time.** Light themes (especially warm parchment/cream palettes) frequently break gold/yellow rarity headings, mute secondary metadata, and invert badge prominence even when dark mode looks crisp.
 - **2026-11-22: Never repeat a macro metric as a per-row alert.** Repeating one global currency or market drift percentage across dozens of rows creates a loud wall of noise and pushes low-value clutter above high-value items needing action. Put macro context in one top banner and reserve row badges for item-level verdicts.
