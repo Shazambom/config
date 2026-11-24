@@ -44,8 +44,8 @@ never hand-edit or hand-install anything on the local machine.**
 
 ## Portable Pi
 
-`./init.sh` sets up both Pi and Neovim. `./init.sh --pi` sets up only Pi;
-keep that fast path so launching Pi does not run Neovim/tool updates.
+`./init.sh` sets up Pi, Antigravity, and Neovim. `./init.sh --pi` sets up only Pi;
+keep that fast path so launching Pi does not run Antigravity or Neovim/tool updates.
 
 `./pi.sh` installs/deploys via `./init.sh --pi` and launches Pi without nvim
 prerequisites. Sources live under `pi/`; see `pi/README.md`. Edit defaults in
@@ -56,6 +56,13 @@ Claude skills/commands are bundled under `claude/`; `claude/setup.sh` seeds
 missing entries into `~/.claude` through `init.sh --pi`, never overwriting existing
 skills or commands. Pi also discovers trusted project `.claude/skills`.
 Keep credentials and sessions out of git. All future Pi config must also deploy via `init.sh`.
+
+## Portable Antigravity
+
+`./init.sh --antigravity` runs `antigravity/setup.sh` to copy bundled skills from
+`claude/skills/` into `~/.gemini/config/skills/` and any T3 Code Antigravity
+provider homes under `~/.t3/userdata/providers/antigravity/*/config/skills/`. See
+`antigravity/README.md`.
 
 ## Implementation discipline
 
@@ -106,6 +113,9 @@ retire disproven advice rather than accumulating contradictions. Keep general
 rules here and feature details in the linked record.
 
 Feature index:
+- [Antigravity setup](docs/lessons/antigravity-setup.md): isolated T3 Code
+  `GEMINI_HOME`, `realpath`-based `view_file` containment, and `$HOME`-derived
+  skill copying.
 - [Pi complaints](docs/lessons/pi-complaints.md): human approval, shared storage,
   newest-report selection, immutable outcomes, and manual skill verification.
 - [Grafana log routing](docs/lessons/grafana-log-routing.md): codebase ownership,
